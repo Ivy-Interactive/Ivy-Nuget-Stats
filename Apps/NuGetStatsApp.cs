@@ -57,8 +57,9 @@ public class IvyInsightsApp : ViewBase
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
 
-        var versionChartFromDate = this.UseState<DateTime?>(() => null);
-        var versionChartToDate = this.UseState<DateTime?>(() => null);
+        var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
+            DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
+            DateOnly.FromDateTime(DateTime.Today)));
         var versionChartShowPreReleases = this.UseState(true);
         var versionChartCount = this.UseState(7);
 
@@ -79,7 +80,7 @@ public class IvyInsightsApp : ViewBase
             tags: ["database", "downloads"]);
 
         var filteredVersionChartQuery = this.UseQuery(
-            key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartFromDate.Value?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartToDate.Value?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
+            key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
             fetcher: async (CancellationToken ct) =>
             {
                 if (statsQuery.Value == null)
@@ -89,15 +90,15 @@ public class IvyInsightsApp : ViewBase
                 var count = Math.Clamp(versionChartCount.Value, 2, 20);
                 var filteredVersions = s.Versions.AsEnumerable();
                 
-                if (versionChartFromDate.Value.HasValue)
+                if (versionChartDateRange.Value.Item1.HasValue)
                 {
-                    var fromDate = versionChartFromDate.Value.Value.Date;
+                    var fromDate = versionChartDateRange.Value.Item1.Value.ToDateTime(TimeOnly.MinValue);
                     filteredVersions = filteredVersions.Where(v => 
                         v.Published.HasValue && v.Published.Value.Date >= fromDate);
                 }
-                if (versionChartToDate.Value.HasValue)
+                if (versionChartDateRange.Value.Item2.HasValue)
                 {
-                    var toDate = versionChartToDate.Value.Value.Date.AddDays(1);
+                    var toDate = versionChartDateRange.Value.Item2.Value.ToDateTime(TimeOnly.MinValue).AddDays(1);
                     filteredVersions = filteredVersions.Where(v => 
                         v.Published.HasValue && v.Published.Value.Date < toDate);
                 }
@@ -259,24 +260,54 @@ public class IvyInsightsApp : ViewBase
             })
             .ToList();
 
-        // Calculate this month and average for metrics using database data
+        // Calculate growth using last 14 days (This Week vs Previous Week) based on Dates
+        var today = DateOnly.FromDateTime(now);
+        var startOfThisWeek = today.AddDays(-6);
+        var startOfPrevWeek = startOfThisWeek.AddDays(-7);
+        
+        var thisWeekDownloads = dailyStats
+            .Where(d => d.Date >= startOfThisWeek && d.Date <= today)
+            .Sum(d => Math.Max(0, d.DailyGrowth));
+            
+        var prevWeekDownloads = dailyStats
+            .Where(d => d.Date >= startOfPrevWeek && d.Date < startOfThisWeek)
+            .Sum(d => Math.Max(0, d.DailyGrowth));
+        
+        var growthPercent = 0.0;
+        if (prevWeekDownloads > 0)
+        {
+            growthPercent = ((double)(thisWeekDownloads - prevWeekDownloads) / prevWeekDownloads) * 100;
+        }
+        else if (thisWeekDownloads > 0)
+        {
+            // If previous week is 0, show the current count as percentage growth (e.g. 0 -> 404 = +404%)
+            growthPercent = (double)thisWeekDownloads;
+        }
+        
         var downloadsThisMonth = dailyStats
             .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
             .Sum(d => Math.Max(0, d.DailyGrowth));
-        
+
         var avgMonthlyDownloads = dailyChartData.Count > 0 
             ? dailyChartData.Average(d => d.Downloads) * 30 // Average daily * 30 days
             : 0.0;
 
         var latestVersionInfo = s.Versions.FirstOrDefault(v => v.Version == s.LatestVersion);
         
+        var trendIcon = growthPercent >= 0 ? Icons.TrendingUp : Icons.TrendingDown;
+        var trendColor = growthPercent >= 0 ? Colors.Success : Colors.Destructive;
+
         var metrics = Layout.Grid().Columns(4).Gap(3)
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
-                    | (downloadsThisMonth > 0
-                        ? Text.Block($"+{downloadsThisMonth:N0} this month").Muted()
-                        : null)
+                    | (Layout.Horizontal().Gap(6).Align(Align.Center)
+                        | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
+                        | (thisWeekDownloads > 0 || prevWeekDownloads > 0
+                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
+                                | new Icon(trendIcon).Color(trendColor)
+                                | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
+                            : null))
+                    | Text.Block($"+{thisWeekDownloads:N0} this week").Muted()
             ).Title("Total Downloads").Icon(Icons.Download)
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
@@ -369,8 +400,9 @@ public class IvyInsightsApp : ViewBase
                 | Layout.Horizontal().Gap(2)
                     | Text.H4("Recent Versions Distribution")
                 | (Layout.Horizontal().Gap(2).Align(Align.Center)
-                    | versionChartFromDate.ToDateInput().WithField()
-                    | versionChartToDate.ToDateInput().WithField()
+                    | versionChartDateRange.ToDateRangeInput()
+                        .Format("MMM dd, yyyy")
+                        .Placeholder("Select date range")
                     | new Button(versionChartShowPreReleases.Value ? "With Pre-releases" : "Releases Only")
                         .Outline()
                         .Icon(Icons.ChevronDown)
@@ -408,26 +440,66 @@ public class IvyInsightsApp : ViewBase
                 | timelineChart
         );
 
-        var releasesCount = s.Versions.Count(v => !IsPreRelease(v.Version));
-        var preReleasesCount = s.Versions.Count(v => IsPreRelease(v.Version));
+        // Calculate historical weekly growth for the chart
+        var growthWeeks = new List<string>();
+        var growthValues = new List<double>();
+        var todayDate = DateOnly.FromDateTime(now);
         
-        var releaseTypeData = new[]
-        {
-            new { Type = "Releases", Count = releasesCount },
-            new { Type = "Pre-releases", Count = preReleasesCount }
-        }.Where(x => x.Count > 0).ToList();
+        // Find the Monday of the current week to align strictly to Mon-Sun
+        // If today is Sunday (0), we go back 6 days to Monday. Otherwise we go back DayOfWeek-1
+        var diff = todayDate.DayOfWeek == DayOfWeek.Sunday ? 6 : (int)todayDate.DayOfWeek - 1;
+        var currentWeekMonday = todayDate.AddDays(-diff);
 
-        var releaseTypePieChart = releaseTypeData.Count > 0
-            ? releaseTypeData.ToPieChart(
-                dimension: item => item.Type,
-                measure: item => item.Sum(x => (double)x.Count),
-                PieChartStyles.Dashboard,
-                new PieChartTotal(s.Versions.Count.ToString("N0"), "Total Versions"))
+        // Go back 12 calendar weeks
+        for (int i = 0; i < 12; i++) 
+        {
+            var weekStart = currentWeekMonday.AddDays(-i * 7);
+            var weekEnd = weekStart.AddDays(6); // Monday to Sunday
+            var prevWeekStart = weekStart.AddDays(-7);
+            
+            var currentWeekSum = dailyStats
+                .Where(d => d.Date >= weekStart && d.Date <= weekEnd)
+                .Sum(d => Math.Max(0, d.DailyGrowth));
+            
+            var prevWeekSum = dailyStats
+                .Where(d => d.Date >= prevWeekStart && d.Date < weekStart)
+                .Sum(d => Math.Max(0, d.DailyGrowth));
+                
+            var growth = 0.0;
+            if (prevWeekSum > 0)
+            {
+                growth = ((double)(currentWeekSum - prevWeekSum) / prevWeekSum) * 100;
+            }
+            else if (currentWeekSum > 0)
+            {
+               // If previous week is 0, show the current count as percentage growth to match the main KPI card
+               growth = (double)currentWeekSum;
+            }
+            
+            growthWeeks.Add(weekStart.ToString("MM/dd"));
+            growthValues.Add(growth);
+        }
+        
+        // Reverse to show oldest to newest
+        growthWeeks.Reverse();
+        growthValues.Reverse();
+
+        var weeklyGrowthData = growthWeeks.Zip(growthValues, (w, g) => new { Week = w, Growth = g })
+            .ToList();
+
+        var weeklyGrowthChart = weeklyGrowthData.Count > 0
+            ? weeklyGrowthData.ToLineChart(
+                dimension: d => d.Week,
+                measures: [d => d.First().Growth],
+                LineChartStyles.Dashboard)
             : null;
-        var releaseTypeChartCard = new Card(
+
+        var weeklyGrowthCard = new Card(
             Layout.Vertical().Gap(3).Padding(3)
-                | (releaseTypePieChart ?? (object)Text.Block("No data available").Muted())
-            ).Title("Releases vs Pre-releases");
+                | (weeklyGrowthChart != null 
+                    ? weeklyGrowthChart 
+                    : (object)Text.Block("No history available").Muted())
+            ).Title("Weekly Growth (WoW %)");
 
         var allVersionsTable = s.Versions
             .Select(v => new
@@ -462,7 +534,7 @@ public class IvyInsightsApp : ViewBase
             | (Layout.Grid().Columns(3).Gap(3).Width(Size.Fraction(0.9f))
                 | adoptionCard
                 | monthlyDownloadsCard
-                | releaseTypeChartCard)
+                | weeklyGrowthCard)
             | (Layout.Horizontal().Gap(3).Width(Size.Fraction(0.9f))
                 | versionsTableCard
                 | (Layout.Vertical().Width(Size.Full())
