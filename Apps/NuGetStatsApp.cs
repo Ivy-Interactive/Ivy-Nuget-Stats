@@ -259,24 +259,54 @@ public class IvyInsightsApp : ViewBase
             })
             .ToList();
 
-        // Calculate this month and average for metrics using database data
+        // Calculate growth using last 14 days (This Week vs Previous Week) based on Dates
+        var today = DateOnly.FromDateTime(now);
+        var startOfThisWeek = today.AddDays(-6);
+        var startOfPrevWeek = startOfThisWeek.AddDays(-7);
+        
+        var thisWeekDownloads = dailyStats
+            .Where(d => d.Date >= startOfThisWeek && d.Date <= today)
+            .Sum(d => Math.Max(0, d.DailyGrowth));
+            
+        var prevWeekDownloads = dailyStats
+            .Where(d => d.Date >= startOfPrevWeek && d.Date < startOfThisWeek)
+            .Sum(d => Math.Max(0, d.DailyGrowth));
+        
+        var growthPercent = 0.0;
+        if (prevWeekDownloads > 0)
+        {
+            growthPercent = ((double)(thisWeekDownloads - prevWeekDownloads) / prevWeekDownloads) * 100;
+        }
+        else if (thisWeekDownloads > 0)
+        {
+            // If previous week is 0, show the current count as percentage growth (e.g. 0 -> 404 = +404%)
+            growthPercent = (double)thisWeekDownloads;
+        }
+        
         var downloadsThisMonth = dailyStats
             .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
             .Sum(d => Math.Max(0, d.DailyGrowth));
-        
+
         var avgMonthlyDownloads = dailyChartData.Count > 0 
             ? dailyChartData.Average(d => d.Downloads) * 30 // Average daily * 30 days
             : 0.0;
 
         var latestVersionInfo = s.Versions.FirstOrDefault(v => v.Version == s.LatestVersion);
         
+        var trendIcon = growthPercent >= 0 ? Icons.TrendingUp : Icons.TrendingDown;
+        var trendColor = growthPercent >= 0 ? Colors.Success : Colors.Destructive;
+
         var metrics = Layout.Grid().Columns(4).Gap(3)
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
-                    | (downloadsThisMonth > 0
-                        ? Text.Block($"+{downloadsThisMonth:N0} this month").Muted()
-                        : null)
+                    | (Layout.Horizontal().Gap(6).Align(Align.Center)
+                        | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
+                        | (thisWeekDownloads > 0 || prevWeekDownloads > 0
+                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
+                                | new Icon(trendIcon).Color(trendColor)
+                                | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
+                            : null))
+                    | Text.Block($"+{thisWeekDownloads:N0} this week").Muted()
             ).Title("Total Downloads").Icon(Icons.Download)
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
