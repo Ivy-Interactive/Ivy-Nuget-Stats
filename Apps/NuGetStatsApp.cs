@@ -438,26 +438,66 @@ public class IvyInsightsApp : ViewBase
                 | timelineChart
         );
 
-        var releasesCount = s.Versions.Count(v => !IsPreRelease(v.Version));
-        var preReleasesCount = s.Versions.Count(v => IsPreRelease(v.Version));
+        // Calculate historical weekly growth for the chart
+        var growthWeeks = new List<string>();
+        var growthValues = new List<double>();
+        var todayDate = DateOnly.FromDateTime(now);
         
-        var releaseTypeData = new[]
-        {
-            new { Type = "Releases", Count = releasesCount },
-            new { Type = "Pre-releases", Count = preReleasesCount }
-        }.Where(x => x.Count > 0).ToList();
+        // Find the Monday of the current week to align strictly to Mon-Sun
+        // If today is Sunday (0), we go back 6 days to Monday. Otherwise we go back DayOfWeek-1
+        var diff = todayDate.DayOfWeek == DayOfWeek.Sunday ? 6 : (int)todayDate.DayOfWeek - 1;
+        var currentWeekMonday = todayDate.AddDays(-diff);
 
-        var releaseTypePieChart = releaseTypeData.Count > 0
-            ? releaseTypeData.ToPieChart(
-                dimension: item => item.Type,
-                measure: item => item.Sum(x => (double)x.Count),
-                PieChartStyles.Dashboard,
-                new PieChartTotal(s.Versions.Count.ToString("N0"), "Total Versions"))
+        // Go back 12 calendar weeks
+        for (int i = 0; i < 12; i++) 
+        {
+            var weekStart = currentWeekMonday.AddDays(-i * 7);
+            var weekEnd = weekStart.AddDays(6); // Monday to Sunday
+            var prevWeekStart = weekStart.AddDays(-7);
+            
+            var currentWeekSum = dailyStats
+                .Where(d => d.Date >= weekStart && d.Date <= weekEnd)
+                .Sum(d => Math.Max(0, d.DailyGrowth));
+            
+            var prevWeekSum = dailyStats
+                .Where(d => d.Date >= prevWeekStart && d.Date < weekStart)
+                .Sum(d => Math.Max(0, d.DailyGrowth));
+                
+            var growth = 0.0;
+            if (prevWeekSum > 0)
+            {
+                growth = ((double)(currentWeekSum - prevWeekSum) / prevWeekSum) * 100;
+            }
+            else if (currentWeekSum > 0)
+            {
+               // If previous week is 0, treat as 100% growth (new activity) rather than absolute count
+               growth = 100.0;
+            }
+            
+            growthWeeks.Add(weekStart.ToString("MM/dd"));
+            growthValues.Add(growth);
+        }
+        
+        // Reverse to show oldest to newest
+        growthWeeks.Reverse();
+        growthValues.Reverse();
+
+        var weeklyGrowthData = growthWeeks.Zip(growthValues, (w, g) => new { Week = w, Growth = g })
+            .ToList();
+
+        var weeklyGrowthChart = weeklyGrowthData.Count > 0
+            ? weeklyGrowthData.ToLineChart(
+                dimension: d => d.Week,
+                measures: [d => d.First().Growth],
+                LineChartStyles.Dashboard)
             : null;
-        var releaseTypeChartCard = new Card(
+
+        var weeklyGrowthCard = new Card(
             Layout.Vertical().Gap(3).Padding(3)
-                | (releaseTypePieChart ?? (object)Text.Block("No data available").Muted())
-            ).Title("Releases vs Pre-releases");
+                | (weeklyGrowthChart != null 
+                    ? weeklyGrowthChart 
+                    : (object)Text.Block("No history available").Muted())
+            ).Title("Weekly Growth (WoW %)");
 
         var allVersionsTable = s.Versions
             .Select(v => new
@@ -492,7 +532,7 @@ public class IvyInsightsApp : ViewBase
             | (Layout.Grid().Columns(3).Gap(3).Width(Size.Fraction(0.9f))
                 | adoptionCard
                 | monthlyDownloadsCard
-                | releaseTypeChartCard)
+                | weeklyGrowthCard)
             | (Layout.Horizontal().Gap(3).Width(Size.Fraction(0.9f))
                 | versionsTableCard
                 | (Layout.Vertical().Width(Size.Full())
