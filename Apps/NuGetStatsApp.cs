@@ -472,8 +472,8 @@ public class IvyInsightsApp : ViewBase
             }
             else if (currentWeekSum > 0)
             {
-               // If previous week is 0, treat as 100% growth (new activity) rather than absolute count
-               growth = 100.0;
+               // If previous week is 0, show the current count as percentage growth to match the main KPI card
+               growth = (double)currentWeekSum;
             }
             
             growthWeeks.Add(weekStart.ToString("MM/dd"));
