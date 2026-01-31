@@ -99,3 +99,9 @@ public sealed class DailyDownloadStats
     public long TotalDownloads { get; set; }
     public long DailyGrowth { get; set; }
 }
+
+public sealed class GithubStarsStats
+{
+    public DateOnly Date { get; set; }
+    public long Stars { get; set; }
+}

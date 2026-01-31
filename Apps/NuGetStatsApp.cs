@@ -79,6 +79,21 @@ public class IvyInsightsApp : ViewBase
             },
             tags: ["database", "downloads"]);
 
+        var starsStatsQuery = this.UseQuery(
+            key: "github-stars-stats",
+            fetcher: async (CancellationToken ct) =>
+            {
+                return await dbService.GetGithubStarsStatsAsync(30, ct);
+            },
+            options: new QueryOptions
+            {
+                Scope = QueryScope.Server,
+                Expiration = TimeSpan.FromMinutes(5),
+                KeepPrevious = true,
+                RevalidateOnMount = true
+            },
+            tags: ["database", "stars"]);
+
         var filteredVersionChartQuery = this.UseQuery(
             key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
             fetcher: async (CancellationToken ct) =>
@@ -419,25 +434,30 @@ public class IvyInsightsApp : ViewBase
                     : Text.Block("No versions found").Muted())
         );
 
-        var timelineData = s.Versions
-            .Where(v => v.Published.HasValue && v.Published.Value.Year >= 2000)
-            .GroupBy(v => new DateTime(v.Published!.Value.Year, v.Published.Value.Month, 1))
-            .Select(g => new { 
-                Date = g.Key, 
-                Releases = (double)g.Count() 
+        var starsStats = starsStatsQuery.Value ?? new List<GithubStarsStats>();
+        
+        var starsChartData = starsStats
+            .OrderBy(d => d.Date)
+            .Select(d => new 
+            { 
+                Date = d.Date.ToString("MMM dd"), 
+                Stars = (double)d.Stars 
             })
-            .OrderBy(v => v.Date)
             .ToList();
 
-        var timelineChart = timelineData.ToLineChart(
-            dimension: e => e.Date.ToString("MMM yyyy"),
-            measures: [e => e.Sum(f => f.Releases)],
-            LineChartStyles.Dashboard);
+        var starsChart = starsChartData.Count > 0
+            ? starsChartData.ToLineChart(
+                dimension: e => e.Date,
+                measures: [e => e.First().Stars],
+                LineChartStyles.Dashboard)
+            : null;
 
-        var timelineChartCard = new Card(
+        var githubStarsCard = new Card(
             Layout.Vertical().Gap(3).Padding(3)
-                | Text.H4("Version Releases Over Time")
-                | timelineChart
+                | Text.H4("GitHub Stars (Last 30 Days)")
+                | (starsChart != null 
+                    ? starsChart 
+                    : (object)Text.Block("No data available").Muted())
         );
 
         // Calculate historical weekly growth for the chart
@@ -539,6 +559,6 @@ public class IvyInsightsApp : ViewBase
                 | versionsTableCard
                 | (Layout.Vertical().Width(Size.Full())
                     | versionChartCard
-                    | timelineChartCard ));
+                    | githubStarsCard ));
     }
 }

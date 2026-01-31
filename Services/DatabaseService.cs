@@ -98,5 +98,52 @@ public class DatabaseService : IDatabaseService
             return new List<DailyDownloadStats>();
         }
     }
+
+    public async Task<List<GithubStarsStats>> GetGithubStarsStatsAsync(int days = 30, CancellationToken cancellationToken = default)
+    {
+        var stats = new List<GithubStarsStats>();
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            // Get data for the last N days, ordered by date
+            var query = @"
+                SELECT date, stars
+                FROM github_stars_history
+                ORDER BY date DESC
+                LIMIT @days;
+            ";
+
+            await using var cmd = new NpgsqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("days", days);
+            
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var date = reader.GetDateTime(0).Date;
+                var stars = reader.GetInt64(1);
+                stats.Add(new GithubStarsStats
+                {
+                    Date = DateOnly.FromDateTime(date),
+                    Stars = stars
+                });
+            }
+
+            // Return in reverse order (newest to oldest)
+            // But usually charts want oldest to newest for the X-axis. 
+            // DailyDownloadStats returns Newest -> Oldest (DESC).
+            // However, the chart logic in App.cs seems to handle sorting or assumes specific order.
+            // Let's stick to what existing method does: it returns stats.OrderByDescending(s => s.Date).
+            
+            return stats.OrderByDescending(s => s.Date).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching github stars stats: {ex.Message}");
+            return new List<GithubStarsStats>();
+        }
+    }
 }
 
