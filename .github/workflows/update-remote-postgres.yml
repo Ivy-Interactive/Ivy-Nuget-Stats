@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update_db:
+  update_nuget_stats:
     runs-on: ubuntu-latest
     steps:
       - name: Install DB driver
@@ -14,7 +14,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install psycopg2-binary requests
 
-      - name: Run Update
+      - name: Run Nuget Update
         env:
           DB_URL: ${{ secrets.DB_URL }}
         run: |
@@ -24,29 +24,111 @@ jobs:
           import psycopg2
           from datetime import date
 
-          downloads = requests.get("https://azuresearch-usnc.nuget.org/query?q=packageid:Ivy").json()['data'][0]['totalDownloads']
+          # Fetch Nuget Downloads
+          try:
+              downloads = requests.get("https://azuresearch-usnc.nuget.org/query?q=packageid:Ivy").json()['data'][0]['totalDownloads']
+          except Exception as e:
+              print(f"Error fetching Nuget stats: {e}")
+              exit(1)
+
           date_to_record = date.today().isoformat()
 
-          conn = psycopg2.connect(os.getenv('DB_URL'))
-          cur = conn.cursor()
-          cur.execute("""
-              CREATE TABLE IF NOT EXISTS nuget_history (
-                  id SERIAL PRIMARY KEY,
-                  package_name TEXT,
-                  downloads BIGINT,
-                  date DATE DEFAULT CURRENT_DATE,
-                  UNIQUE(package_name, date)
-              );
-          """)
-          cur.execute("""
-              INSERT INTO nuget_history (package_name, downloads, date)
-              VALUES (%s, %s, %s)
-              ON CONFLICT (package_name, date) 
-              DO UPDATE SET downloads = EXCLUDED.downloads;
-          """, ("Ivy", downloads, date_to_record))
-          conn.commit()
-          cur.close()
-          conn.close()
-          print(f"Success! Ivy: {downloads} downloads added to database.")
+          if downloads > 0:
+              try:
+                  conn = psycopg2.connect(os.getenv('DB_URL'))
+                  cur = conn.cursor()
+                  
+                  # Nuget History Table
+                  cur.execute("""
+                      CREATE TABLE IF NOT EXISTS nuget_history (
+                          id SERIAL PRIMARY KEY,
+                          package_name TEXT,
+                          downloads BIGINT,
+                          date DATE DEFAULT CURRENT_DATE,
+                          UNIQUE(package_name, date)
+                      );
+                  """)
+                  cur.execute("""
+                      INSERT INTO nuget_history (package_name, downloads, date)
+                      VALUES (%s, %s, %s)
+                      ON CONFLICT (package_name, date) 
+                      DO UPDATE SET downloads = EXCLUDED.downloads;
+                  """, ("Ivy", downloads, date_to_record))
+
+                  conn.commit()
+                  cur.close()
+                  conn.close()
+                  print(f"Success! Ivy: {downloads} downloads added/updated in database.")
+              except Exception as e:
+                  print(f"Database error: {e}")
+                  exit(1)
+          else:
+              print("No downloads found or fetch returned 0.")
+              exit(1)
+          EOF
+
+  update_github_stats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install DB driver
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary requests
+
+      - name: Run GitHub Update
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+        run: |
+          python - <<EOF
+          import os
+          import requests
+          import psycopg2
+          from datetime import date
+
+          # Fetch GitHub Stars
+          stars = 0
+          try:
+              headers = {'User-Agent': 'python-request-script'}
+              repo_data = requests.get("https://api.github.com/repos/Ivy-Interactive/Ivy-Framework", headers=headers).json()
+              stars = repo_data.get('stargazers_count', 0)
+          except Exception as e:
+              print(f"Error fetching GitHub stats: {e}")
+              exit(1)
+
+          date_to_record = date.today().isoformat()
+          
+          if stars > 0:
+              try:
+                  conn = psycopg2.connect(os.getenv('DB_URL'))
+                  cur = conn.cursor()
+
+                  # GitHub Stars Table
+                  cur.execute("""
+                      CREATE TABLE IF NOT EXISTS github_stars_history (
+                          id SERIAL PRIMARY KEY,
+                          repo_name TEXT,
+                          stars BIGINT,
+                          date DATE DEFAULT CURRENT_DATE,
+                          UNIQUE(repo_name, date)
+                      );
+                  """)
+                  
+                  cur.execute("""
+                      INSERT INTO github_stars_history (repo_name, stars, date)
+                      VALUES (%s, %s, %s)
+                      ON CONFLICT (repo_name, date) 
+                      DO UPDATE SET stars = EXCLUDED.stars;
+                  """, ("Ivy-Interactive/Ivy-Framework", stars, date_to_record))
+
+                  conn.commit()
+                  cur.close()
+                  conn.close()
+                  print(f"Success! Ivy-Interactive/Ivy-Framework: {stars} stars added/updated in database.")
+              except Exception as e:
+                  print(f"Database error: {e}")
+                  exit(1)
+          else:
+              print("No stars found or fetch returned 0.")
+              exit(1) # Fail if we can't get stars, usually we expect at least 1 for this repo
           EOF
 
