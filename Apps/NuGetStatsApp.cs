@@ -349,9 +349,10 @@ public class IvyInsightsApp : ViewBase
             ).Title("Most Popular").Icon(Icons.Star);
 
         var topVersionsData = s.Versions
+            .Where(v => v.Published.HasValue && v.Published.Value >= now.AddDays(-30))
             .Where(v => v.Downloads.HasValue && v.Downloads.Value > 0)
             .OrderByDescending(v => v.Downloads)
-            .Take(3)
+            .Take(5)
             .Select(v => new
             {
                 Version = v.Version,
@@ -369,11 +370,11 @@ public class IvyInsightsApp : ViewBase
             ? new Card(
                 Layout.Vertical().Gap(3).Padding(3)
                     | topVersionsChart
-            ).Title("Top Popular Versions").Icon(Icons.Star).Height(Size.Full())
+            ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Star).Height(Size.Full())
             : new Card(
                 Layout.Vertical().Gap(3).Padding(3).Align(Align.Center)
-                    | Text.Block("No download data available").Muted()
-            ).Title("Top Popular Versions").Icon(Icons.Star).Height(Size.Full());
+                    | Text.Block("No versions released in the last 30 days").Muted()
+            ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Star).Height(Size.Full());
 
         var percentDiff = avgMonthlyDownloads > 0
             ? Math.Round(((downloadsThisMonth - avgMonthlyDownloads) / avgMonthlyDownloads) * 100, 1)
