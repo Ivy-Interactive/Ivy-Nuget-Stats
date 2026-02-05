@@ -83,7 +83,7 @@ public class IvyInsightsApp : ViewBase
             key: "github-stars-stats",
             fetcher: async (CancellationToken ct) =>
             {
-                return await dbService.GetGithubStarsStatsAsync(30, ct);
+                return await dbService.GetGithubStarsStatsAsync(365, ct);
             },
             options: new QueryOptions
             {
@@ -327,9 +327,9 @@ public class IvyInsightsApp : ViewBase
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
                     | Text.H2(animatedVersions.Value.ToString("N0")).Bold()
-                    | (versionsThisMonth > 0
-                        ? Text.Block($"+{versionsThisMonth} this month").Muted()
-                        : null)
+                    | Text.Block(versionsThisMonth > 0
+                        ? $"+{versionsThisMonth} this month"
+                        : "0 versions released this month").Muted()
             ).Title("Total Versions").Icon(Icons.Tag)
             | new Card(
                 Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
@@ -456,7 +456,7 @@ public class IvyInsightsApp : ViewBase
                 | (starsChart != null 
                     ? starsChart 
                     : (object)Text.Block("No data available").Muted())
-        ).Title("GitHub Stars (Last 30 Days)").Icon(Icons.Github);
+        ).Title("GitHub Stars (Last 365 Days)").Icon(Icons.Github);
 
         // Calculate historical weekly growth for the chart
         var growthWeeks = new List<string>();
