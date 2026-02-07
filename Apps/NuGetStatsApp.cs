@@ -258,20 +258,44 @@ public class IvyInsightsApp : ViewBase
             .Select(d => new
             {
                 Date = d.Date.ToString("MMM dd"),
+                DateOnly = d.Date,
                 Downloads = (double)Math.Max(0, d.DailyGrowth)
             })
             .ToList();
 
-        var averageDailyDownloads = dailyChartData.Count > 0
-            ? Math.Round(dailyChartData.Average(d => d.Downloads))
-            : 0.0;
-
+        // Calculate 5-day moving average for each day
         var dailyChartDataWithAverage = dailyChartData
-            .Select(d => new
+            .Select((d, index) =>
             {
-                d.Date,
-                d.Downloads,
-                Average = averageDailyDownloads
+                var movingAverage = 0.0;
+                
+                if (index >= 4)
+                {
+                    // We have at least 5 days, calculate average of last 5 days
+                    // (current day + previous 4 days = 5 days total)
+                    var last5Days = dailyChartData
+                        .Skip(index - 4)  // Skip to 4 days before current
+                        .Take(5)          // Take 5 days total
+                        .Select(x => x.Downloads)
+                        .ToList();
+                    movingAverage = Math.Round(last5Days.Average(), 1);
+                }
+                else
+                {
+                    // Less than 5 days available, calculate average of all days up to this point
+                    var availableDays = dailyChartData
+                        .Take(index + 1)  // Take all days from start to current
+                        .Select(x => x.Downloads)
+                        .ToList();
+                    movingAverage = Math.Round(availableDays.Average(), 1);
+                }
+
+                return new
+                {
+                    d.Date,
+                    Downloads = d.Downloads,
+                    movingAverage = movingAverage
+                };
             })
             .ToList();
 
@@ -388,9 +412,9 @@ public class IvyInsightsApp : ViewBase
                     dimension: d => d.Date,
                     measures: [
                         d => d.First().Downloads,
-                        d => d.First().Average
                     ],
                     LineChartStyles.Dashboard)
+                .Measure("Moving Average", d => d.First().movingAverage)
             : null;
 
         var monthlyDownloadsCard = new Card(
