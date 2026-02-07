@@ -96,10 +96,10 @@ public class IvyInsightsApp : ViewBase
 
         var filteredVersionChartQuery = this.UseQuery(
             key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
-            fetcher: async (CancellationToken ct) =>
+            fetcher: (CancellationToken ct) =>
             {
                 if (statsQuery.Value == null)
-                    return new List<VersionChartDataItem>();
+                    return Task.FromResult(new List<VersionChartDataItem>());
 
                 var s = statsQuery.Value;
                 var count = Math.Clamp(versionChartCount.Value, 2, 20);
@@ -135,7 +135,7 @@ public class IvyInsightsApp : ViewBase
                     })
                     .ToList();
 
-                return versionChartData;
+                return Task.FromResult(versionChartData);
             },
             options: new QueryOptions
             {
