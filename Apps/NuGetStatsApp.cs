@@ -457,6 +457,13 @@ public class IvyInsightsApp : ViewBase
             .OrderByDescending(d => d.Date)
             .FirstOrDefault();
         var currentStars = latestStarsEntry?.Stars ?? 0L;
+
+        var starsMonthStart = new DateOnly(now.Year, now.Month, 1);
+        var starsAtMonthStart = starsStats
+            .Where(d => d.Date <= starsMonthStart)
+            .OrderByDescending(d => d.Date)
+            .FirstOrDefault()?.Stars ?? 0L;
+        var starsThisMonth = currentStars - starsAtMonthStart;
         
         var starsChartData = starsStats
             .OrderBy(d => d.Date)
@@ -519,6 +526,11 @@ public class IvyInsightsApp : ViewBase
             | new Card(
                 Layout.Vertical().Align(Align.Center)
                     | Text.H2(currentStars.ToString("N0")).Bold()
+                    | Text.Block(starsThisMonth > 0
+                        ? $"+{starsThisMonth:N0} this month"
+                        : starsThisMonth < 0
+                            ? $"{starsThisMonth:N0} this month"
+                            : "0 stars added this month").Muted()
             ).Title("GitHub Stars").Icon(Icons.Github);
 
         var stargazersDaily = stargazersDailyQuery.Value ?? new List<GithubStargazersDailyStats>();
