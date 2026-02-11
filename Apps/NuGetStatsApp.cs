@@ -366,42 +366,6 @@ public class IvyInsightsApp : ViewBase
         var trendIcon = growthPercent >= 0 ? Icons.TrendingUp : Icons.TrendingDown;
         var trendColor = growthPercent >= 0 ? Colors.Success : Colors.Destructive;
 
-        var metrics = Layout.Grid().Columns(4).Gap(3)
-            | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | (Layout.Horizontal().Gap(6).Align(Align.Center)
-                        | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
-                        | (thisWeekDownloads > 0 || prevWeekDownloads > 0
-                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
-                                | new Icon(trendIcon).Color(trendColor)
-                                | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
-                            : null))
-                    | Text.Block($"+{thisWeekDownloads:N0} this week").Muted()
-            ).Title("Total Downloads").Icon(Icons.Download)
-            | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | Text.H2(animatedVersions.Value.ToString("N0")).Bold()
-                    | Text.Block(versionsThisMonth > 0
-                        ? $"+{versionsThisMonth} this month"
-                        : "0 versions released this month").Muted()
-            ).Title("Total Versions").Icon(Icons.Tag)
-            | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | Text.H2(s.LatestVersion).Bold()
-                    | (latestVersionInfo != null && latestVersionInfo.Downloads.HasValue && latestVersionInfo.Downloads.Value > 0
-                        ? Text.Block($"{latestVersionInfo.Downloads.Value:N0} downloads").Muted()
-                        : null)
-            ).Title("Latest Version").Icon(Icons.ArrowUp)
-            | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | Text.H2(mostDownloadedVersion != null 
-                        ? mostDownloadedVersion.Version 
-                        : "N/A").Bold()
-                    | (mostDownloadedVersion != null && mostDownloadedVersion.Downloads.HasValue && mostDownloadedVersion.Downloads.Value > 0
-                        ? Text.Block($"{mostDownloadedVersion.Downloads.Value:N0} downloads").Muted()
-                        : null)
-            ).Title("Most Popular").Icon(Icons.Star);
-
         var topVersionsData = s.Versions
             .Where(v => v.Published.HasValue && v.Published.Value >= now.AddDays(-30))
             .Where(v => v.Downloads.HasValue && v.Downloads.Value > 0)
@@ -488,6 +452,11 @@ public class IvyInsightsApp : ViewBase
         ).Title("Recent Versions Distribution").Icon(Icons.ChartBar);
 
         var starsStats = starsStatsQuery.Value ?? new List<GithubStarsStats>();
+
+        var latestStarsEntry = starsStats
+            .OrderByDescending(d => d.Date)
+            .FirstOrDefault();
+        var currentStars = latestStarsEntry?.Stars ?? 0L;
         
         var starsChartData = starsStats
             .OrderBy(d => d.Date)
@@ -511,6 +480,46 @@ public class IvyInsightsApp : ViewBase
                     ? starsChart 
                     : (object)Text.Block("No data available").Muted())
         ).Title("GitHub Stars (Last 365 Days)").Icon(Icons.Github);
+
+        var metrics = Layout.Grid().Columns(5)
+            | new Card(
+                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                    | (Layout.Horizontal().Gap(6).Align(Align.Center)
+                        | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
+                        | (thisWeekDownloads > 0 || prevWeekDownloads > 0
+                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
+                                | new Icon(trendIcon).Color(trendColor)
+                                | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
+                            : null))
+                    | Text.Block($"+{thisWeekDownloads:N0} this week").Muted()
+            ).Title("Total Downloads").Icon(Icons.Download)
+            | new Card(
+                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                    | Text.H2(animatedVersions.Value.ToString("N0")).Bold()
+                    | Text.Block(versionsThisMonth > 0
+                        ? $"+{versionsThisMonth} this month"
+                        : "0 versions released this month").Muted()
+            ).Title("Total Versions").Icon(Icons.Tag)
+            | new Card(
+                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                    | Text.H2(s.LatestVersion).Bold()
+                    | (latestVersionInfo != null && latestVersionInfo.Downloads.HasValue && latestVersionInfo.Downloads.Value > 0
+                        ? Text.Block($"{latestVersionInfo.Downloads.Value:N0} downloads").Muted()
+                        : null)
+            ).Title("Latest Version").Icon(Icons.ArrowUp)
+            | new Card(
+                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                    | Text.H2(mostDownloadedVersion != null 
+                        ? mostDownloadedVersion.Version 
+                        : "N/A").Bold()
+                    | (mostDownloadedVersion != null && mostDownloadedVersion.Downloads.HasValue && mostDownloadedVersion.Downloads.Value > 0
+                        ? Text.Block($"{mostDownloadedVersion.Downloads.Value:N0} downloads").Muted()
+                        : null)
+            ).Title("Most Popular").Icon(Icons.Star)
+            | new Card(
+                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                    | Text.H2(currentStars.ToString("N0")).Bold()
+            ).Title("GitHub Stars").Icon(Icons.Github);
 
         var stargazersDaily = stargazersDailyQuery.Value ?? new List<GithubStargazersDailyStats>();
         
