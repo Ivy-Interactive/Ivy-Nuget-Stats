@@ -212,7 +212,7 @@ public class IvyInsightsApp : ViewBase
         {
             return Layout.Center()
                 | new Card(
-                    Layout.Vertical().Gap(2).Padding(3)
+                    Layout.Vertical()
                         | Text.H3("Error")
                         | Text.Block(error.Message)
                         | new Button("Retry", onClick: _ => statsQuery.Mutator.Revalidate())
@@ -222,19 +222,19 @@ public class IvyInsightsApp : ViewBase
 
         if (statsQuery.Loading && statsQuery.Value == null)
         {
-            return Layout.Vertical().Gap(4).Padding(4).Align(Align.TopCenter)
+            return Layout.Vertical().Align(Align.TopCenter)
                 | Text.H1("NuGet Statistics")
                 | Text.Muted($"Loading statistics for {PackageId}...")
-                | (Layout.Grid().Columns(4).Gap(3).Width(Size.Fraction(0.9f))
+                | (Layout.Grid().Columns(4).Width(Size.Fraction(0.9f))
                     | new Skeleton().Height(Size.Units(80))
                     | new Skeleton().Height(Size.Units(80))
                     | new Skeleton().Height(Size.Units(80))
                     | new Skeleton().Height(Size.Units(80)))
-                | (Layout.Grid().Columns(3).Gap(3).Width(Size.Fraction(0.9f))
+                | (Layout.Grid().Columns(3).Width(Size.Fraction(0.9f))
                     | new Skeleton().Height(Size.Units(200))
                     | new Skeleton().Height(Size.Units(200))
                     | new Skeleton().Height(Size.Units(200)))
-                | (Layout.Horizontal().Gap(3).Width(Size.Fraction(0.9f))
+                | (Layout.Horizontal().Width(Size.Fraction(0.9f))
                     | new Skeleton().Width(Size.Fraction(0.6f)).Height(Size.Units(200))
                     | (Layout.Vertical().Width(Size.Full())
                         | new Skeleton().Height(Size.Units(200))
@@ -386,11 +386,11 @@ public class IvyInsightsApp : ViewBase
 
         var adoptionCard = topVersionsChart != null
             ? new Card(
-                Layout.Vertical().Gap(3).Padding(3)
+                Layout.Vertical()
                     | topVersionsChart
             ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Crown).Height(Size.Full())
             : new Card(
-                Layout.Vertical().Gap(3).Padding(3).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
                     | Text.Block("No versions released in the last 30 days").Muted()
             ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Crown).Height(Size.Full());
 
@@ -412,7 +412,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var monthlyDownloadsCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | (dailyDownloadsChart != null
                     ? dailyDownloadsChart
                     : Text.Block("No data available for the last month").Muted())
@@ -430,8 +430,8 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var versionChartCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
-                | (Layout.Horizontal().Gap(2).Align(Align.Center)
+            Layout.Vertical()
+                | (Layout.Horizontal().Align(Align.Center)
                     | versionChartDateRange.ToDateRangeInput()
                         .Format("MMM dd, yyyy")
                         .Placeholder("Select date range")
@@ -475,7 +475,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var githubStarsCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | (starsChart != null 
                     ? starsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -483,32 +483,32 @@ public class IvyInsightsApp : ViewBase
 
         var metrics = Layout.Grid().Columns(5)
             | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
-                    | (Layout.Horizontal().Gap(6).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
+                    | (Layout.Horizontal().Align(Align.Center)
                         | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
                         | (thisWeekDownloads > 0 || prevWeekDownloads > 0
-                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
+                            ? (Layout.Horizontal().Width(Size.Fit())
                                 | new Icon(trendIcon).Color(trendColor)
                                 | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
                             : null))
                     | Text.Block($"+{thisWeekDownloads:N0} this week").Muted()
             ).Title("Total Downloads").Icon(Icons.Download)
             | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
                     | Text.H2(animatedVersions.Value.ToString("N0")).Bold()
                     | Text.Block(versionsThisMonth > 0
                         ? $"+{versionsThisMonth} this month"
                         : "0 versions released this month").Muted()
             ).Title("Total Versions").Icon(Icons.Tag)
             | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
                     | Text.H2(s.LatestVersion).Bold()
                     | (latestVersionInfo != null && latestVersionInfo.Downloads.HasValue && latestVersionInfo.Downloads.Value > 0
                         ? Text.Block($"{latestVersionInfo.Downloads.Value:N0} downloads").Muted()
                         : null)
             ).Title("Latest Version").Icon(Icons.ArrowUp)
             | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
                     | Text.H2(mostDownloadedVersion != null 
                         ? mostDownloadedVersion.Version 
                         : "N/A").Bold()
@@ -517,7 +517,7 @@ public class IvyInsightsApp : ViewBase
                         : null)
             ).Title("Most Popular").Icon(Icons.Star)
             | new Card(
-                Layout.Vertical().Gap(2).Padding(3).Align(Align.Center)
+                Layout.Vertical().Align(Align.Center)
                     | Text.H2(currentStars.ToString("N0")).Bold()
             ).Title("GitHub Stars").Icon(Icons.Github);
 
@@ -545,7 +545,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var stargazersDailyCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | (stargazersChart != null 
                     ? stargazersChart 
                     : (object)Text.Block("No data available").Muted())
@@ -570,7 +570,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var totalDownloadsCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | (totalDownloadsChart != null 
                     ? totalDownloadsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -631,7 +631,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var weeklyGrowthCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | (weeklyGrowthChart != null 
                     ? weeklyGrowthChart 
                     : (object)Text.Block("No history available").Muted())
@@ -660,17 +660,17 @@ public class IvyInsightsApp : ViewBase
             });
 
         var versionsTableCard = new Card(
-            Layout.Vertical().Gap(3).Padding(3)
+            Layout.Vertical()
                 | versionsTable
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.6f));
 
-        return Layout.Vertical().Gap(4).Padding(4).Align(Align.TopCenter)
+        return Layout.Vertical().Align(Align.TopCenter)
             | metrics.Width(Size.Fraction(0.9f))
-            | (Layout.Grid().Columns(3).Gap(3).Width(Size.Fraction(0.9f))
+            | (Layout.Grid().Columns(3).Width(Size.Fraction(0.9f))
                 | adoptionCard
                 | monthlyDownloadsCard
                 | weeklyGrowthCard)
-            | (Layout.Horizontal().Gap(3).Width(Size.Fraction(0.9f))
+            | (Layout.Horizontal().Width(Size.Fraction(0.9f))
                 | versionsTableCard
                 | (Layout.Vertical().Width(Size.Full())
                     | versionChartCard
