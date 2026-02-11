@@ -516,6 +516,7 @@ public class IvyInsightsApp : ViewBase
         
         var stargazersChartData = stargazersDaily
             .OrderBy(d => d.Date)
+            .Skip(1) // Skip first data point as it contains all existing stars, not actual daily growth
             .Select(d => new 
             { 
                 Date = d.Date.ToString("MMM dd"), 
