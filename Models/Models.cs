@@ -105,3 +105,11 @@ public sealed class GithubStarsStats
     public DateOnly Date { get; set; }
     public long Stars { get; set; }
 }
+
+public sealed class GithubStargazersDailyStats
+{
+    public DateOnly Date { get; set; }
+    public int NewCount { get; set; }
+    public int UnstarCount { get; set; }
+    public int ReactivatedCount { get; set; }
+}

@@ -145,5 +145,51 @@ public class DatabaseService : IDatabaseService
             return new List<GithubStarsStats>();
         }
     }
+
+    public async Task<List<GithubStargazersDailyStats>> GetGithubStargazersDailyStatsAsync(int days = 30, CancellationToken cancellationToken = default)
+    {
+        var stats = new List<GithubStargazersDailyStats>();
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            var query = @"
+                SELECT date, new_count, unstar_count, reactivated_count
+                FROM github_stargazers_daily
+                WHERE repo_name = 'Ivy-Interactive/Ivy-Framework'
+                ORDER BY date DESC
+                LIMIT @days;
+            ";
+
+            await using var cmd = new NpgsqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("days", days);
+            
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var date = reader.GetDateTime(0).Date;
+                var newCount = reader.GetInt32(1);
+                var unstarCount = reader.GetInt32(2);
+                var reactivatedCount = reader.GetInt32(3);
+                
+                stats.Add(new GithubStargazersDailyStats
+                {
+                    Date = DateOnly.FromDateTime(date),
+                    NewCount = newCount,
+                    UnstarCount = unstarCount,
+                    ReactivatedCount = reactivatedCount
+                });
+            }
+
+            return stats.OrderByDescending(s => s.Date).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching github stargazers daily stats: {ex.Message}");
+            return new List<GithubStargazersDailyStats>();
+        }
+    }
 }
 

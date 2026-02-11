@@ -94,6 +94,21 @@ public class IvyInsightsApp : ViewBase
             },
             tags: ["database", "stars"]);
 
+        var stargazersDailyQuery = this.UseQuery(
+            key: "github-stargazers-daily",
+            fetcher: async (CancellationToken ct) =>
+            {
+                return await dbService.GetGithubStargazersDailyStatsAsync(365, ct);
+            },
+            options: new QueryOptions
+            {
+                Scope = QueryScope.Server,
+                Expiration = TimeSpan.FromMinutes(5),
+                KeepPrevious = true,
+                RevalidateOnMount = true
+            },
+            tags: ["database", "stargazers"]);
+
         var totalDownloadsStatsQuery = this.UseQuery(
             key: "total-downloads-stats-365",
             fetcher: async (CancellationToken ct) =>
@@ -497,6 +512,35 @@ public class IvyInsightsApp : ViewBase
                     : (object)Text.Block("No data available").Muted())
         ).Title("GitHub Stars (Last 365 Days)").Icon(Icons.Github);
 
+        var stargazersDaily = stargazersDailyQuery.Value ?? new List<GithubStargazersDailyStats>();
+        
+        var stargazersChartData = stargazersDaily
+            .OrderBy(d => d.Date)
+            .Select(d => new 
+            { 
+                Date = d.Date.ToString("MMM dd"), 
+                NewCount = (double)d.NewCount,
+                UnstarCount = (double)d.UnstarCount
+            })
+            .ToList();
+
+        var stargazersChart = stargazersChartData.Count > 0
+            ? stargazersChartData.ToLineChart(
+                dimension: e => e.Date,
+                measures: [
+                    e => e.First().NewCount,
+                    e => e.First().UnstarCount
+                ],
+                LineChartStyles.Dashboard)
+            : null;
+
+        var stargazersDailyCard = new Card(
+            Layout.Vertical().Gap(3).Padding(3)
+                | (stargazersChart != null 
+                    ? stargazersChart 
+                    : (object)Text.Block("No data available").Muted())
+        ).Title("Stargazers Daily (New vs Unstarred) - Last 365 Days").Icon(Icons.Users);
+
         var totalDownloadsStats = totalDownloadsStatsQuery.Value ?? new List<DailyDownloadStats>();
         
         var totalDownloadsChartData = totalDownloadsStats
@@ -594,7 +638,7 @@ public class IvyInsightsApp : ViewBase
 
         var versionsTable = allVersionsTable.AsQueryable()
             .ToDataTable()
-            .Height(Size.Units(225))
+            .Height(Size.Units(310))
             .Header(v => v.Version, "Version")
             .Header(v => v.Published, "Published")
             .Header(v => v.Downloads, "Downloads")
@@ -621,6 +665,7 @@ public class IvyInsightsApp : ViewBase
                 | (Layout.Vertical().Width(Size.Full())
                     | versionChartCard
                     | githubStarsCard
+                    | stargazersDailyCard
                     | totalDownloadsCard ));
     }
 }
