@@ -494,7 +494,7 @@ public class IvyInsightsApp : ViewBase
                     | (Layout.Horizontal().Align(Align.Center)
                         | Text.H2(animatedDownloads.Value.ToString("N0")).Bold()
                         | (thisWeekDownloads > 0 || prevWeekDownloads > 0
-                            ? (Layout.Horizontal().Width(Size.Fit())
+                            ? (Layout.Horizontal().Gap(1).Width(Size.Fit())
                                 | new Icon(trendIcon).Color(trendColor)
                                 | Text.H3($"{Math.Abs(growthPercent):0.0}%").Color(trendColor))
                             : null))
