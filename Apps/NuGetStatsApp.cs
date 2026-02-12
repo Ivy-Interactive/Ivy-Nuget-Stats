@@ -57,6 +57,12 @@ public class IvyInsightsApp : ViewBase
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
         var showStargazersList = this.UseState(false);
+        var showStargazersTodayDialog = this.UseState(false);
+        var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
+        {
+            var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+            return (yesterday, yesterday);
+        });
         var stargazersSearchTerm = this.UseState("");
         var stargazersFilter = this.UseState("all"); // "all" | "active" | "unstarred"
 
@@ -552,7 +558,7 @@ public class IvyInsightsApp : ViewBase
             ).Title("GitHub Stars").Icon(Icons.Github)
              .HandleClick(_ =>
              {
-                 showStargazersList.Set(true);
+                 showStargazersTodayDialog.Set(true);
                  if (stargazersQuery.Value == null && !stargazersQuery.Loading)
                  {
                      stargazersQuery.Mutator.Revalidate();
@@ -702,9 +708,89 @@ public class IvyInsightsApp : ViewBase
                 | versionsTable
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.6f));
 
+        Dialog? stargazersTodayDialog = null;
         Sheet? stargazersSheet = null;
         
-        // Stargazers list overlay/sheet
+        // Stargazer activity by period dialog
+        if (showStargazersTodayDialog.Value)
+        {
+            var (fromDate, toDate) = stargazersDateRange.Value;
+            var stargazers = stargazersQuery.Value ?? [];
+
+            var periodEvents = stargazers
+                .SelectMany(sg =>
+                {
+                    var list = new List<(string Username, string Action, string When, string DaysJoined)>();
+                    if (sg.StarredAt is { } starred)
+                    {
+                        var d = DateOnly.FromDateTime(starred);
+                        if (d >= fromDate && d <= toDate)
+                        {
+                            var days = sg.UnstarredAt.HasValue
+                                ? (sg.UnstarredAt.Value.Date - starred.Date).Days
+                                : (DateTime.UtcNow.Date - starred.Date).Days;
+                            
+                            list.Add((sg.Username, "Joined", starred.ToString("yyyy-MM-dd HH:mm"), Math.Max(0, days).ToString()));
+                        }
+                    }
+                    if (sg.UnstarredAt is { } unstarred)
+                    {
+                        var d = DateOnly.FromDateTime(unstarred);
+                        if (d >= fromDate && d <= toDate)
+                        {
+                            var days = sg.StarredAt.HasValue
+                                ? Math.Max(0, (unstarred.Date - sg.StarredAt.Value.Date).Days)
+                                : 0;
+                            list.Add((sg.Username, "Left", unstarred.ToString("yyyy-MM-dd HH:mm"), days.ToString()));
+                        }
+                    }
+                    return list;
+                })
+                .OrderByDescending(e => e.When)
+                .Select(e => new
+                {
+                    e.Username,
+                    StatusBadge = e.Action == "Joined"
+                        ? (object)new Badge("Joined")
+                        : new Badge("Left").Variant(BadgeVariant.Destructive),
+                    e.When,
+                    e.DaysJoined
+                })
+                .ToList();
+
+            var periodContent = stargazersQuery.Loading
+                ? (object)Text.Block("Loading stargazer changes...").Muted()
+                : periodEvents.ToTable()
+                    .Width(Size.Full())
+                    .Header(e => e.Username, "User")
+                    .Header(e => e.StatusBadge, "Action")
+                    .Header(e => e.When, "When")
+                    .Header(e => e.DaysJoined, "Days")
+                    .Align(e => e.When, Align.Right)
+                    .Align(e => e.DaysJoined, Align.Right)
+                    .Empty(Text.Block("No joins or leaves in the selected period.").Muted());
+
+            stargazersTodayDialog = new Dialog(
+                onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
+                header: new DialogHeader("GitHub Stargazer Activity"),
+                body: new DialogBody(Layout.Vertical().Gap(2)
+                    | stargazersDateRange.ToDateRangeInput()
+                        .Placeholder("Select period")
+                        .Format("MMM dd, yyyy")
+                    | periodContent),
+                footer: new DialogFooter(
+                    new Button("View full list")
+                        .Variant(ButtonVariant.Outline)
+                        .HandleClick(_ =>
+                        {
+                            showStargazersTodayDialog.Set(false);
+                            showStargazersList.Set(true);
+                            stargazersQuery.Mutator.Revalidate();
+                        }))
+            ).Width(Size.Units(220));
+        }
+        
+        // Full stargazers list overlay/sheet
         if (showStargazersList.Value)
         {
             var stargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
@@ -785,6 +871,7 @@ public class IvyInsightsApp : ViewBase
                     | githubStarsCard
                     | stargazersDailyCard
                     | totalDownloadsCard ))
+            | stargazersTodayDialog
             | stargazersSheet;
     }
 }
