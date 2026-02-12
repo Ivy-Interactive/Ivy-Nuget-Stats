@@ -680,17 +680,21 @@ public class IvyInsightsApp : ViewBase
             }
             else if (currentWeekSum > 0)
             {
-               // If previous week is 0, show the current count as percentage growth to match the main KPI card
-               growth = (double)currentWeekSum;
+                growth = (double)currentWeekSum;
             }
-            
+
             growthWeeks.Add(weekStart.ToString("MM/dd"));
             growthValues.Add(growth);
         }
-        
+
         // Reverse to show oldest to newest
         growthWeeks.Reverse();
         growthValues.Reverse();
+
+        // Zero out the first data point with growth > 0 (outlier from 0→N downloads when history started)
+        var firstPositiveIndex = growthValues.FindIndex(g => g > 0);
+        if (firstPositiveIndex >= 0)
+            growthValues[firstPositiveIndex] = 0;
 
         var weeklyGrowthData = growthWeeks.Zip(growthValues, (w, g) => new { Week = w, Growth = g })
             .ToList();
