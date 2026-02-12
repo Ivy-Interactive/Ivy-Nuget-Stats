@@ -108,17 +108,25 @@ public class DatabaseService : IDatabaseService
             await using var conn = new NpgsqlConnection(_connectionString);
             await conn.OpenAsync(cancellationToken);
 
-            // Get data for the last N days, ordered by date
+            // Compute stars per day from github_stargazers: for each date, count users who had starred on or before that date and had not unstarred by end of that date
             var query = @"
-                SELECT date, stars
-                FROM github_stars_history
-                ORDER BY date DESC
-                LIMIT @days;
+                SELECT d::date AS date,
+                       (SELECT COUNT(*)::bigint
+                        FROM github_stargazers g
+                        WHERE g.repo_name = 'Ivy-Interactive/Ivy-Framework'
+                          AND (g.starred_at AT TIME ZONE 'UTC')::date <= d::date
+                          AND (g.unstarred_at IS NULL OR (g.unstarred_at AT TIME ZONE 'UTC')::date > d::date)) AS stars
+                FROM generate_series(
+                    CURRENT_DATE - @days,
+                    CURRENT_DATE - 1,
+                    '1 day'::interval
+                ) AS d
+                ORDER BY d::date ASC;
             ";
 
             await using var cmd = new NpgsqlCommand(query, conn);
             cmd.Parameters.AddWithValue("days", days);
-            
+
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -131,13 +139,7 @@ public class DatabaseService : IDatabaseService
                 });
             }
 
-            // Return in reverse order (newest to oldest)
-            // But usually charts want oldest to newest for the X-axis. 
-            // DailyDownloadStats returns Newest -> Oldest (DESC).
-            // However, the chart logic in App.cs seems to handle sorting or assumes specific order.
-            // Let's stick to what existing method does: it returns stats.OrderByDescending(s => s.Date).
-            
-            return stats.OrderByDescending(s => s.Date).ToList();
+            return stats;
         }
         catch (Exception ex)
         {
