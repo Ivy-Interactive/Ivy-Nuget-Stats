@@ -56,6 +56,7 @@ public class IvyInsightsApp : ViewBase
         var animatedVersions = this.UseState(0);
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
+        var showStargazersList = this.UseState(false);
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
             DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
@@ -123,6 +124,21 @@ public class IvyInsightsApp : ViewBase
                 RevalidateOnMount = true
             },
             tags: ["database", "downloads", "total"]);
+
+        var stargazersQuery = this.UseQuery(
+            key: "github-stargazers-list",
+            fetcher: async (CancellationToken ct) =>
+            {
+                return await dbService.GetGithubStargazersAsync(ct);
+            },
+            options: new QueryOptions
+            {
+                Scope = QueryScope.Server,
+                Expiration = TimeSpan.FromMinutes(15),
+                KeepPrevious = true,
+                RevalidateOnMount = false
+            },
+            tags: ["database", "stargazers", "list"]);
 
         var filteredVersionChartQuery = this.UseQuery(
             key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
@@ -531,7 +547,15 @@ public class IvyInsightsApp : ViewBase
                         : starsThisMonth < 0
                             ? $"{starsThisMonth:N0} this month"
                             : "0 stars added this month").Muted()
-            ).Title("GitHub Stars").Icon(Icons.Github);
+            ).Title("GitHub Stars").Icon(Icons.Github)
+             .HandleClick(_ =>
+             {
+                 showStargazersList.Set(true);
+                 if (stargazersQuery.Value == null && !stargazersQuery.Loading)
+                 {
+                     stargazersQuery.Mutator.Revalidate();
+                 }
+             });
 
         var stargazersDaily = stargazersDailyQuery.Value ?? new List<GithubStargazersDailyStats>();
         
@@ -675,6 +699,53 @@ public class IvyInsightsApp : ViewBase
             Layout.Vertical()
                 | versionsTable
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.6f));
+
+        // Stargazers list overlay/sheet
+        if (showStargazersList.Value)
+        {
+            var stargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
+            var stargazersTableData = stargazers
+                .Select(sg => new
+                {
+                    Username = sg.Username,
+                    StarredAt = sg.StarredAt?.ToString("MMM dd, yyyy") ?? "Unknown",
+                    UnstarredAt = sg.UnstarredAt?.ToString("MMM dd, yyyy") ?? "-",
+                    Status = sg.IsActive ? "Active" : "Unstarred"
+                })
+                .ToList();
+
+            var stargazersTable = stargazersTableData.AsQueryable()
+                .ToDataTable()
+                .Height(Size.Units(400))
+                .Header(sg => sg.Username, "Username")
+                .Header(sg => sg.StarredAt, "Starred At")
+                .Header(sg => sg.UnstarredAt, "Unstarred At")
+                .Header(sg => sg.Status, "Status")
+                .Config(c =>
+                {
+                    c.AllowSorting = true;
+                    c.AllowFiltering = true;
+                    c.ShowSearch = true;
+                });
+
+            var stargazersSheet = Layout.Center()
+                | new Card(
+                    Layout.Vertical()
+                        | (Layout.Horizontal()
+                            | Text.H3("GitHub Stargazers")
+                            | new Button("Close", onClick: _ => showStargazersList.Set(false))
+                                .Outline()
+                                .Icon(Icons.X))
+                        | (stargazersQuery.Loading
+                            ? (object)Text.Block("Loading stargazers...").Muted()
+                            : stargazersTableData.Count > 0
+                                ? stargazersTable
+                                : Text.Block("No stargazers found").Muted())
+                ).Width(Size.Fraction(0.8f))
+                 .Height(Size.Units(500));
+
+            return stargazersSheet;
+        }
 
         return Layout.Vertical().Align(Align.TopCenter)
             | metrics.Width(Size.Fraction(0.9f))

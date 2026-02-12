@@ -113,3 +113,12 @@ public sealed class GithubStargazersDailyStats
     public int UnstarCount { get; set; }
     public int ReactivatedCount { get; set; }
 }
+
+public sealed class GithubStargazer
+{
+    public string Username { get; set; } = string.Empty;
+    public DateTime? StarredAt { get; set; }
+    public string? AvatarUrl { get; set; }
+    public DateTime? UnstarredAt { get; set; }
+    public bool IsActive { get; set; }
+}

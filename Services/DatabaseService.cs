@@ -191,5 +191,49 @@ public class DatabaseService : IDatabaseService
             return new List<GithubStargazersDailyStats>();
         }
     }
+
+    public async Task<List<GithubStargazer>> GetGithubStargazersAsync(CancellationToken cancellationToken = default)
+    {
+        var stargazers = new List<GithubStargazer>();
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(cancellationToken);
+
+            var query = @"
+                SELECT user_login, starred_at, unstarred_at
+                FROM github_stargazers
+                WHERE repo_name = 'Ivy-Interactive/Ivy-Framework'
+                ORDER BY starred_at DESC;
+            ";
+
+            await using var cmd = new NpgsqlCommand(query, conn);
+            
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var userLogin = reader.GetString(0);
+                var starredAt = reader.IsDBNull(1) ? (DateTime?)null : reader.GetDateTime(1);
+                var unstarredAt = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
+                
+                stargazers.Add(new GithubStargazer
+                {
+                    Username = userLogin,
+                    StarredAt = starredAt,
+                    AvatarUrl = null,
+                    UnstarredAt = unstarredAt,
+                    IsActive = unstarredAt == null
+                });
+            }
+
+            return stargazers;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching github stargazers: {ex.Message}");
+            return new List<GithubStargazer>();
+        }
+    }
 }
 
