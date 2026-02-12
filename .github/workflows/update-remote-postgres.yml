@@ -154,6 +154,7 @@ jobs:
           REPO = "Ivy-Interactive/Ivy-Framework"
           
           def fetch_all_stargazers():
+              """Fetch all stargazers with their starred_at timestamps."""
               result = []
               page = 1
               headers = {
@@ -171,35 +172,50 @@ jobs:
                   data = resp.json()
                   if not data:
                       break
-                  result.extend(item["user"]["login"] for item in data)
+                  
+                  for item in data:
+                      user = item.get("user") or {}
+                      login = user.get("login")
+                      starred_at = item.get("starred_at")
+                      if login:
+                          result.append((login, starred_at))
+                  
                   page += 1
               
-              return set(result)
+              return result
           
           try:
-              current = fetch_all_stargazers()
+              stargazers = fetch_all_stargazers()
           except Exception as e:
               print(f"Error fetching stargazers: {e}")
               raise SystemExit(1)
           
-          print(f"Fetched {len(current)} stargazers for {REPO}.")
+          print(f"Fetched {len(stargazers)} stargazers for {REPO}.")
           
-          if not current:
+          if not stargazers:
               print("No stargazers returned; nothing to update.")
               raise SystemExit(0)
+          
+          # Current active stargazers as a set of logins
+          current = {login for login, _ in stargazers}
+          # Map login -> starred_at from GitHub API (when we first see them)
+          starred_at_map = {login: starred_at for login, starred_at in stargazers}
           
           try:
               conn = psycopg2.connect(os.getenv("DB_URL"))
               cur = conn.cursor()
           
-              # Setup tables
+              # Setup tables (ensure starred_at column exists)
               cur.execute("""
                   CREATE TABLE IF NOT EXISTS github_stargazers (
                       repo_name TEXT,
                       user_login TEXT,
+                      starred_at TIMESTAMPTZ,
                       unstarred_at TIMESTAMPTZ,
                       PRIMARY KEY (repo_name, user_login)
                   );
+                  ALTER TABLE github_stargazers ADD COLUMN IF NOT EXISTS starred_at TIMESTAMPTZ;
+                  ALTER TABLE github_stargazers ADD COLUMN IF NOT EXISTS unstarred_at TIMESTAMPTZ;
                   
                   CREATE TABLE IF NOT EXISTS github_stargazers_daily (
                       repo_name TEXT,
@@ -211,7 +227,7 @@ jobs:
                   );
               """)
 
-              # Get previous state
+              # Get previous active state
               cur.execute("""
                   SELECT user_login FROM github_stargazers
                   WHERE repo_name = %s AND unstarred_at IS NULL;
@@ -222,16 +238,27 @@ jobs:
               new_users = current - previous
               lost_users = previous - current
               
-              # Insert/update new users
-              for login in new_users:
+              # Backfill starred_at for any existing active users that don't have it yet
+              for login, starred_at in stargazers:
+                  if not starred_at:
+                      continue
                   cur.execute("""
-                      INSERT INTO github_stargazers (repo_name, user_login, unstarred_at)
-                      VALUES (%s, %s, NULL)
+                      UPDATE github_stargazers
+                      SET starred_at = COALESCE(starred_at, %s)
+                      WHERE repo_name = %s AND user_login = %s;
+                  """, (starred_at, REPO, login))
+              
+              # Insert new users with their first starred_at
+              for login in new_users:
+                  starred_at = starred_at_map.get(login)
+                  cur.execute("""
+                      INSERT INTO github_stargazers (repo_name, user_login, starred_at, unstarred_at)
+                      VALUES (%s, %s, %s, NULL)
                       ON CONFLICT (repo_name, user_login)
-                      DO UPDATE SET unstarred_at = NULL;
-                  """, (REPO, login))
+                      DO NOTHING;
+                  """, (REPO, login, starred_at))
 
-              # Reactivate users
+              # Reactivate users (do NOT touch starred_at so it stays as "first joined")
               reactivate_count = 0
               for login in current:
                   cur.execute("""
