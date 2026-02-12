@@ -724,7 +724,7 @@ public class IvyInsightsApp : ViewBase
 
         var versionsTable = allVersionsTable.AsQueryable()
             .ToDataTable()
-            .Height(Size.Units(310))
+            .Height(Size.Units(130))
             .Header(v => v.Version, "Version")
             .Header(v => v.Published, "Published")
             .Header(v => v.Downloads, "Downloads")
@@ -738,7 +738,7 @@ public class IvyInsightsApp : ViewBase
         var versionsTableCard = new Card(
             Layout.Vertical()
                 | versionsTable
-        ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.6f));
+        ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.9f));
 
         Dialog? stargazersTodayDialog = null;
         Sheet? stargazersSheet = null;
@@ -911,12 +911,12 @@ public class IvyInsightsApp : ViewBase
                 | monthlyDownloadsCard
                 | weeklyGrowthCard)
             | (Layout.Horizontal().Width(Size.Fraction(0.9f))
-                | versionsTableCard
-                | (Layout.Vertical().Width(Size.Full())
-                    | versionChartCard
-                    | githubStarsCard
-                    | stargazersDailyCard
-                    | totalDownloadsCard ))
+                | versionChartCard
+                | totalDownloadsCard)
+            | ( Layout.Horizontal().Width(Size.Fraction(0.9f))
+                | githubStarsCard
+                | stargazersDailyCard )
+            | versionsTableCard
             | stargazersTodayDialog
             | stargazersSheet
             | stargazerDetailDialog;
