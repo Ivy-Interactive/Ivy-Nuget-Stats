@@ -65,6 +65,7 @@ public class IvyInsightsApp : ViewBase
         });
         var stargazersSearchTerm = this.UseState("");
         var stargazersFilter = this.UseState("all"); // "all" | "active" | "unstarred"
+        var selectedStargazer = this.UseState<GithubStargazer?>(() => null);
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
             DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
@@ -811,19 +812,7 @@ public class IvyInsightsApp : ViewBase
                     subtitle: sg.IsActive ? "Active" : $"Unstarred {(sg.UnstarredAt.HasValue ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy") : "-")}",
                     icon: Icons.User,
                     badge: sg.IsActive ? "Active" : "Unstarred",
-                    onClick: new Action<Event<ListItem>>(_ =>
-                    {
-                        var status = sg.IsActive ? "Active" : "Unstarred";
-                        var starredText = sg.StarredAt.HasValue
-                            ? sg.StarredAt.Value.ToString("MMM dd, yyyy")
-                            : "Unknown";
-                        var unstarredText = sg.UnstarredAt.HasValue
-                            ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy")
-                            : "-";
-                        client.Toast(
-                            $"GitHub user: {sg.Username}",
-                            $"Status: {status} | Starred: {starredText} | Unstarred: {unstarredText}");
-                    })
+                    onClick: new Action<Event<ListItem>>(_ => selectedStargazer.Set(sg))
                 )
             );
 
@@ -854,8 +843,34 @@ public class IvyInsightsApp : ViewBase
                                 ? new List(stargazerItems)
                                 : (object)Text.Block("No stargazers match the search or filter").Muted()))),
                 title: "GitHub Stargazers",
-                description: "Search and filter by status. Tap a user for a quick summary."
+                description: "Tap a user to see details."
             ).Width(Size.Rem(25));
+        }
+
+        Dialog? stargazerDetailDialog = null;
+        if (selectedStargazer.Value is { } sg)
+        {
+            var daysAsStargazer = sg.IsActive && sg.StarredAt.HasValue
+                ? (DateTime.UtcNow - sg.StarredAt.Value).Days
+                : sg.StarredAt.HasValue && sg.UnstarredAt.HasValue
+                    ? (sg.UnstarredAt.Value - sg.StarredAt.Value).Days
+                    : (int?)null;
+
+            var detailModel = new
+            {
+                Status = sg.IsActive ? "Active" : "Left",
+                JoinedAt = sg.StarredAt?.ToString("MMM dd, yyyy HH:mm"),
+                LeftAt = sg.UnstarredAt?.ToString("MMM dd, yyyy HH:mm"),
+                DaysAsStargazer = daysAsStargazer.HasValue ? $"{daysAsStargazer.Value} days" : null
+            };
+
+            stargazerDetailDialog = new Dialog(
+                onClose: (Event<Dialog> _) => selectedStargazer.Set((GithubStargazer?)null),
+                header: new DialogHeader(sg.Username),
+                body: new DialogBody(detailModel.ToDetails().RemoveEmpty()),
+                footer: new DialogFooter(
+                    new Button("Close").HandleClick(_ => selectedStargazer.Set((GithubStargazer?)null)))
+            ).Width(Size.Rem(28));
         }
 
         return Layout.Vertical().Align(Align.TopCenter)
@@ -872,6 +887,7 @@ public class IvyInsightsApp : ViewBase
                     | stargazersDailyCard
                     | totalDownloadsCard ))
             | stargazersTodayDialog
-            | stargazersSheet;
+            | stargazersSheet
+            | stargazerDetailDialog;
     }
 }
