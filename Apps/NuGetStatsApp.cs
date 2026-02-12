@@ -254,23 +254,26 @@ public class IvyInsightsApp : ViewBase
 
         if (statsQuery.Loading && statsQuery.Value == null)
         {
-            return Layout.Vertical().Align(Align.TopCenter)
+            return Layout.Vertical().Align(Align.TopCenter).Gap(2)
                 | Text.H1("NuGet Statistics")
                 | Text.Muted($"Loading statistics for {PackageId}...")
-                | (Layout.Grid().Columns(4).Width(Size.Fraction(0.9f))
-                    | new Skeleton().Height(Size.Units(80))
+                | (Layout.Grid().Columns(5).Width(Size.Fraction(0.9f))
+                    | new Skeleton().Height(Size.Units(50))
+                    | new Skeleton().Height(Size.Units(50))
+                    | new Skeleton().Height(Size.Units(50))
+                    | new Skeleton().Height(Size.Units(50))
+                    | new Skeleton().Height(Size.Units(50)))
+                | (Layout.Grid().Columns(3).Width(Size.Fraction(0.9f))
                     | new Skeleton().Height(Size.Units(80))
                     | new Skeleton().Height(Size.Units(80))
                     | new Skeleton().Height(Size.Units(80)))
-                | (Layout.Grid().Columns(3).Width(Size.Fraction(0.9f))
-                    | new Skeleton().Height(Size.Units(200))
-                    | new Skeleton().Height(Size.Units(200))
-                    | new Skeleton().Height(Size.Units(200)))
-                | (Layout.Horizontal().Width(Size.Fraction(0.9f))
-                    | new Skeleton().Width(Size.Fraction(0.6f)).Height(Size.Units(200))
-                    | (Layout.Vertical().Width(Size.Full())
-                        | new Skeleton().Height(Size.Units(200))
-                        | new Skeleton().Height(Size.Units(200))));
+                | (Layout.Horizontal().Gap(2).Width(Size.Fraction(0.9f))
+                    | new Skeleton().Width(Size.Fraction(0.5f)).Height(Size.Units(80))
+                    | new Skeleton().Width(Size.Fraction(0.5f)).Height(Size.Units(80)))
+                | (Layout.Horizontal().Gap(2).Width(Size.Fraction(0.9f))
+                    | new Skeleton().Width(Size.Fraction(0.5f)).Height(Size.Units(80))
+                    | new Skeleton().Width(Size.Fraction(0.5f)).Height(Size.Units(80)))
+                | new Skeleton().Width(Size.Fraction(0.9f)).Height(Size.Units(130));
         }
 
         var s = statsQuery.Value!;
