@@ -57,6 +57,8 @@ public class IvyInsightsApp : ViewBase
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
         var showStargazersList = this.UseState(false);
+        var stargazersSearchTerm = this.UseState("");
+        var stargazersFilter = this.UseState("all"); // "all" | "active" | "unstarred"
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
             DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
@@ -700,51 +702,74 @@ public class IvyInsightsApp : ViewBase
                 | versionsTable
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.6f));
 
+        Sheet? stargazersSheet = null;
+        
         // Stargazers list overlay/sheet
         if (showStargazersList.Value)
         {
             var stargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
-            var stargazersTableData = stargazers
-                .Select(sg => new
-                {
-                    Username = sg.Username,
-                    StarredAt = sg.StarredAt?.ToString("MMM dd, yyyy") ?? "Unknown",
-                    UnstarredAt = sg.UnstarredAt?.ToString("MMM dd, yyyy") ?? "-",
-                    Status = sg.IsActive ? "Active" : "Unstarred"
-                })
-                .ToList();
 
-            var stargazersTable = stargazersTableData.AsQueryable()
-                .ToDataTable()
-                .Height(Size.Units(400))
-                .Header(sg => sg.Username, "Username")
-                .Header(sg => sg.StarredAt, "Starred At")
-                .Header(sg => sg.UnstarredAt, "Unstarred At")
-                .Header(sg => sg.Status, "Status")
-                .Config(c =>
-                {
-                    c.AllowSorting = true;
-                    c.AllowFiltering = true;
-                    c.ShowSearch = true;
-                });
+            var filteredStargazers = stargazers.AsEnumerable();
+            if (stargazersFilter.Value == "active")
+                filteredStargazers = filteredStargazers.Where(sg => sg.IsActive);
+            else if (stargazersFilter.Value == "unstarred")
+                filteredStargazers = filteredStargazers.Where(sg => !sg.IsActive);
+            if (!string.IsNullOrWhiteSpace(stargazersSearchTerm.Value))
+                filteredStargazers = filteredStargazers.Where(sg =>
+                    sg.Username.Contains(stargazersSearchTerm.Value, StringComparison.OrdinalIgnoreCase));
+            var filteredList = filteredStargazers.ToList();
 
-            var stargazersSheet = Layout.Center()
-                | new Card(
-                    Layout.Vertical()
-                        | (Layout.Horizontal()
-                            | Text.H3("GitHub Stargazers")
-                            | new Button("Close", onClick: _ => showStargazersList.Set(false))
-                                .Outline()
-                                .Icon(Icons.X))
-                        | (stargazersQuery.Loading
-                            ? (object)Text.Block("Loading stargazers...").Muted()
-                            : stargazersTableData.Count > 0
-                                ? stargazersTable
-                                : Text.Block("No stargazers found").Muted())
-                ).Width(Size.Fraction(0.8f))
-                 .Height(Size.Units(500));
+            var stargazerItems = filteredList.Select(sg =>
+                new ListItem(
+                    title: sg.Username,
+                    subtitle: sg.IsActive ? "Active" : $"Unstarred {(sg.UnstarredAt.HasValue ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy") : "-")}",
+                    icon: Icons.User,
+                    badge: sg.IsActive ? "Active" : "Unstarred",
+                    onClick: new Action<Event<ListItem>>(_ =>
+                    {
+                        var status = sg.IsActive ? "Active" : "Unstarred";
+                        var starredText = sg.StarredAt.HasValue
+                            ? sg.StarredAt.Value.ToString("MMM dd, yyyy")
+                            : "Unknown";
+                        var unstarredText = sg.UnstarredAt.HasValue
+                            ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy")
+                            : "-";
+                        client.Toast(
+                            $"GitHub user: {sg.Username}",
+                            $"Status: {status} | Starred: {starredText} | Unstarred: {unstarredText}");
+                    })
+                )
+            );
 
-            return stargazersSheet;
+            var filterLabel = stargazersFilter.Value switch
+            {
+                "active" => "Active only",
+                "unstarred" => "Unstarred only",
+                _ => "All"
+            };
+
+            stargazersSheet = new Sheet(
+                onClose: (Event<Sheet> _) => showStargazersList.Set(false),
+                content: Layout.Vertical()
+                    | (stargazersQuery.Loading
+                        ? (object)Text.Block("Loading stargazers...").Muted()
+                        : (Layout.Vertical()
+                            | (Layout.Horizontal().Width(Size.Full())
+                                | stargazersSearchTerm.ToSearchInput().Placeholder("Search by username...")
+                                | new Button(filterLabel)
+                                    .Variant(ButtonVariant.Outline)
+                                    .Icon(Icons.ChevronDown)
+                                    .WithDropDown(
+                                        MenuItem.Default("All").HandleSelect(() => stargazersFilter.Set("all")),
+                                        MenuItem.Default("Active only").HandleSelect(() => stargazersFilter.Set("active")),
+                                        MenuItem.Default("Unstarred only").HandleSelect(() => stargazersFilter.Set("unstarred")))
+                            )
+                            | (filteredList.Count > 0
+                                ? new List(stargazerItems)
+                                : (object)Text.Block("No stargazers match the search or filter").Muted()))),
+                title: "GitHub Stargazers",
+                description: "Search and filter by status. Tap a user for a quick summary."
+            ).Width(Size.Rem(25));
         }
 
         return Layout.Vertical().Align(Align.TopCenter)
@@ -759,6 +784,7 @@ public class IvyInsightsApp : ViewBase
                     | versionChartCard
                     | githubStarsCard
                     | stargazersDailyCard
-                    | totalDownloadsCard ));
+                    | totalDownloadsCard ))
+            | stargazersSheet;
     }
 }
