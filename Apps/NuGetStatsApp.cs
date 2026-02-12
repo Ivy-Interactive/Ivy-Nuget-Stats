@@ -10,6 +10,13 @@ internal class VersionChartDataItem
     public double Downloads { get; set; }
 }
 
+internal class StargazersDailyChartData
+{
+    public string Date { get; set; } = string.Empty;
+    public double NewCount { get; set; }
+    public double UnstarCount { get; set; }
+}
+
 [App(icon: Icons.ChartBar, title: "Ivy Statistics")]
 public class IvyInsightsApp : ViewBase
 {
@@ -566,18 +573,38 @@ public class IvyInsightsApp : ViewBase
                  }
              });
 
-        var stargazersDaily = stargazersDailyQuery.Value ?? new List<GithubStargazersDailyStats>();
+        var allStargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
+        var last365Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-365));
         
-        var stargazersChartData = stargazersDaily
-            .OrderBy(d => d.Date)
-            .Skip(1) // Skip first data point as it contains all existing stars, not actual daily growth
-            .Select(d => new 
-            { 
-                Date = d.Date.ToString("MMM dd"), 
-                NewCount = (double)d.NewCount,
-                UnstarCount = (double)d.UnstarCount
-            })
-            .ToList();
+        // Group stargazers by the date they joined
+        var joinedByDate = allStargazers
+            .Where(sg => sg.StarredAt.HasValue)
+            .GroupBy(sg => DateOnly.FromDateTime(sg.StarredAt!.Value))
+            .Where(g => g.Key >= last365Days)
+            .ToDictionary(g => g.Key, g => g.Count());
+        
+        // Group stargazers by the date they left
+        var leftByDate = allStargazers
+            .Where(sg => sg.UnstarredAt.HasValue)
+            .GroupBy(sg => DateOnly.FromDateTime(sg.UnstarredAt!.Value))
+            .Where(g => g.Key >= last365Days)
+            .ToDictionary(g => g.Key, g => g.Count());
+        
+        // Generate data for all days in the last 365 days
+        var stargazersChartData = new List<StargazersDailyChartData>();
+        for (int i = 365; i >= 0; i--)
+        {
+            var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-i));
+            var joined = joinedByDate.ContainsKey(date) ? joinedByDate[date] : 0;
+            var left = leftByDate.ContainsKey(date) ? leftByDate[date] : 0;
+            
+            stargazersChartData.Add(new StargazersDailyChartData
+            {
+                Date = date.ToString("MMM dd"),
+                NewCount = (double)joined,
+                UnstarCount = (double)left
+            });
+        }
 
         var stargazersChart = stargazersChartData.Count > 0
             ? stargazersChartData.ToLineChart(
