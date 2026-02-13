@@ -786,7 +786,7 @@ public class IvyInsightsApp : ViewBase
                 .Select(e => new
                 {
                     e.Username,
-                    e.Action,
+                    Action = new[] { e.Action },
                     e.When,
                     e.DaysJoined
                 })
@@ -835,6 +835,7 @@ public class IvyInsightsApp : ViewBase
                 onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
                 header: new DialogHeader("GitHub Stargazer Activity"),
                 body: new DialogBody(Layout.Vertical().Gap(2)
+                    .Key($"{fromDate:O}_{toDate:O}")
                     | stargazersDateRange.ToDateRangeInput()
                         .Placeholder("Select period")
                         .Format("MMM dd, yyyy")
