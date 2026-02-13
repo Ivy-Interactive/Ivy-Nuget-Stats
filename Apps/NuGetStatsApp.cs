@@ -577,25 +577,25 @@ public class IvyInsightsApp : ViewBase
              });
 
         var allStargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
-        var last365Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-365));
-        
+        var last30Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
+
         // Group stargazers by the date they joined
         var joinedByDate = allStargazers
             .Where(sg => sg.StarredAt.HasValue)
             .GroupBy(sg => DateOnly.FromDateTime(sg.StarredAt!.Value))
-            .Where(g => g.Key >= last365Days)
+            .Where(g => g.Key >= last30Days)
             .ToDictionary(g => g.Key, g => g.Count());
-        
+
         // Group stargazers by the date they left
         var leftByDate = allStargazers
             .Where(sg => sg.UnstarredAt.HasValue)
             .GroupBy(sg => DateOnly.FromDateTime(sg.UnstarredAt!.Value))
-            .Where(g => g.Key >= last365Days)
+            .Where(g => g.Key >= last30Days)
             .ToDictionary(g => g.Key, g => g.Count());
-        
-        // Generate data for all days in the last 365 days
+
+        // Generate data for the last 30 days (excluding today)
         var stargazersChartData = new List<StargazersDailyChartData>();
-        for (int i = 365; i >= 0; i--)
+        for (int i = 30; i >= 1; i--)
         {
             var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-i));
             var joined = joinedByDate.ContainsKey(date) ? joinedByDate[date] : 0;
@@ -624,7 +624,7 @@ public class IvyInsightsApp : ViewBase
                 | (stargazersChart != null 
                     ? stargazersChart 
                     : (object)Text.Block("No data available").Muted())
-        ).Title("Stargazers Daily (New vs Unstarred) - Last 365 Days").Icon(Icons.Users);
+        ).Title("Stargazers Daily (New vs Unstarred) - Last 30 Days").Icon(Icons.Users);
 
         var totalDownloadsStats = totalDownloadsStatsQuery.Value ?? new List<DailyDownloadStats>();
         
