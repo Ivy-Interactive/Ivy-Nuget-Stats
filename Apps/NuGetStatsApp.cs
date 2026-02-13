@@ -64,15 +64,12 @@ public class IvyInsightsApp : ViewBase
         var animatedVersions = this.UseState(0);
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
-        var showStargazersList = this.UseState(false);
         var showStargazersTodayDialog = this.UseState(false);
         var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
         {
             var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
             return (yesterday, yesterday);
         });
-        var stargazersSearchTerm = this.UseState("");
-        var stargazersFilter = this.UseState("all"); // "all" | "active" | "unstarred"
         var selectedStargazer = this.UseState<GithubStargazer?>(() => null);
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
@@ -745,7 +742,6 @@ public class IvyInsightsApp : ViewBase
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.9f));
 
         Dialog? stargazersTodayDialog = null;
-        Sheet? stargazersSheet = null;
         
         // Stargazer activity by period dialog
         if (showStargazersTodayDialog.Value)
@@ -841,71 +837,8 @@ public class IvyInsightsApp : ViewBase
                         .Format("MMM dd, yyyy")
                     | periodContent),
                 footer: new DialogFooter(
-                    new Button("View full list")
-                        .Variant(ButtonVariant.Outline)
-                        .HandleClick(_ =>
-                        {
-                            showStargazersTodayDialog.Set(false);
-                            showStargazersList.Set(true);
-                            stargazersQuery.Mutator.Revalidate();
-                        }))
+                    new Button("Close").HandleClick(_ => showStargazersTodayDialog.Set(false)))
             ).Width(Size.Units(220));
-        }
-        
-        // Full stargazers list overlay/sheet
-        if (showStargazersList.Value)
-        {
-            var stargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
-
-            var filteredStargazers = stargazers.AsEnumerable();
-            if (stargazersFilter.Value == "active")
-                filteredStargazers = filteredStargazers.Where(sg => sg.IsActive);
-            else if (stargazersFilter.Value == "unstarred")
-                filteredStargazers = filteredStargazers.Where(sg => !sg.IsActive);
-            if (!string.IsNullOrWhiteSpace(stargazersSearchTerm.Value))
-                filteredStargazers = filteredStargazers.Where(sg =>
-                    sg.Username.Contains(stargazersSearchTerm.Value, StringComparison.OrdinalIgnoreCase));
-            var filteredList = filteredStargazers.ToList();
-
-            var stargazerItems = filteredList.Select(sg =>
-                new ListItem(
-                    title: sg.Username,
-                    subtitle: sg.IsActive ? "Active" : $"Unstarred {(sg.UnstarredAt.HasValue ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy") : "-")}",
-                    icon: Icons.User,
-                    badge: sg.IsActive ? "Active" : "Unstarred",
-                    onClick: new Action<Event<ListItem>>(_ => selectedStargazer.Set(sg))
-                )
-            );
-
-            var filterLabel = stargazersFilter.Value switch
-            {
-                "active" => "Active only",
-                "unstarred" => "Unstarred only",
-                _ => "All"
-            };
-
-            stargazersSheet = new Sheet(
-                onClose: (Event<Sheet> _) => showStargazersList.Set(false),
-                content: Layout.Vertical()
-                    | (stargazersQuery.Loading
-                        ? (object)Text.Block("Loading stargazers...").Muted()
-                        : (Layout.Vertical()
-                            | (Layout.Horizontal().Width(Size.Full())
-                                | stargazersSearchTerm.ToSearchInput().Placeholder("Search by username...")
-                                | new Button(filterLabel)
-                                    .Variant(ButtonVariant.Outline)
-                                    .Icon(Icons.ChevronDown)
-                                    .WithDropDown(
-                                        MenuItem.Default("All").HandleSelect(() => stargazersFilter.Set("all")),
-                                        MenuItem.Default("Active only").HandleSelect(() => stargazersFilter.Set("active")),
-                                        MenuItem.Default("Unstarred only").HandleSelect(() => stargazersFilter.Set("unstarred")))
-                            )
-                            | (filteredList.Count > 0
-                                ? new List(stargazerItems)
-                                : (object)Text.Block("No stargazers match the search or filter").Muted()))),
-                title: "GitHub Stargazers",
-                description: "Tap a user to see details."
-            ).Width(Size.Rem(25));
         }
 
         Dialog? stargazerDetailDialog = null;
@@ -948,7 +881,6 @@ public class IvyInsightsApp : ViewBase
                 | stargazersDailyCard )
             | versionsTableCard
             | stargazersTodayDialog
-            | stargazersSheet
             | stargazerDetailDialog;
     }
 }
