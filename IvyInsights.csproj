@@ -16,7 +16,7 @@
 
   
     <ItemGroup>
-      <PackageReference Include="Ivy" Version="1.2.14" />
+      <PackageReference Include="Ivy" Version="1.2.14-pre-20260213104724" />
       <PackageReference Include="Npgsql" Version="9.0.2" />
     </ItemGroup>
     
