@@ -34,6 +34,7 @@ public class IvyInsightsApp : ViewBase
     public override object? Build()
     {
         var client = UseService<IClientProvider>();
+        var navigator = UseNavigation();
         var nugetProvider = UseService<INuGetStatisticsProvider>();
         
         var statsQuery = this.UseQuery(
@@ -785,9 +786,7 @@ public class IvyInsightsApp : ViewBase
                 .Select(e => new
                 {
                     e.Username,
-                    StatusBadge = e.Action == "Joined"
-                        ? (object)new Badge("Joined")
-                        : new Badge("Left").Variant(BadgeVariant.Destructive),
+                    e.Action,
                     e.When,
                     e.DaysJoined
                 })
@@ -795,15 +794,42 @@ public class IvyInsightsApp : ViewBase
 
             var periodContent = stargazersQuery.Loading
                 ? (object)Text.Block("Loading stargazer changes...").Muted()
-                : periodEvents.ToTable()
-                    .Width(Size.Full())
-                    .Header(e => e.Username, "User")
-                    .Header(e => e.StatusBadge, "Action")
-                    .Header(e => e.When, "When")
-                    .Header(e => e.DaysJoined, "Days")
-                    .Align(e => e.When, Align.Right)
-                    .Align(e => e.DaysJoined, Align.Right)
-                    .Empty(Text.Block("No joins or leaves in the selected period.").Muted());
+                : periodEvents.Count == 0
+                    ? (object)Text.Block("No joins or leaves in the selected period.").Muted()
+                    : periodEvents.AsQueryable()
+                        .ToDataTable(idSelector: e => e.Username)
+                        .Height(Size.Units(120))
+                        .Header(e => e.Username, "User")
+                        .Header(e => e.Action, "Action")
+                        .Header(e => e.When, "When")
+                        .Header(e => e.DaysJoined, "Days")
+                        .RowActions(
+                            MenuItem.Default(Icons.User, "profile").Tag("profile"),
+                            MenuItem.Default(Icons.Eye, "view").Tag("view")
+                        )
+                        .HandleRowAction(async e =>
+                        {
+                            var args = e.Value;
+                            var tag = args.Tag?.ToString();
+                            var username = args.Id?.ToString();
+                            if (string.IsNullOrEmpty(username)) return;
+                            if (tag == "view")
+                            {
+                                var sg = stargazers.FirstOrDefault(s => s.Username == username);
+                                if (sg != null) selectedStargazer.Set(sg);
+                            }
+                            else if (tag == "profile")
+                            {
+                                navigator.Navigate($"https://github.com/{username}");
+                            }
+                            await ValueTask.CompletedTask;
+                        })
+                        .Config(c =>
+                        {
+                            c.AllowSorting = true;
+                            c.AllowFiltering = true;
+                            c.ShowSearch = true;
+                        });
 
             stargazersTodayDialog = new Dialog(
                 onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
