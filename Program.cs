@@ -22,6 +22,12 @@ server.Services.AddHttpClient<NuGetApiClient>(client =>
 server.Services.AddSingleton<INuGetStatisticsProvider, NuGetStatisticsProvider>();
 server.Services.AddSingleton<IDatabaseService, DatabaseService>();
 
+server.Services.AddHttpClient<IDatabaseUpdateService, DatabaseUpdateService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("IvyInsights/1.0");
+});
+
 #if DEBUG
 server.UseHotReload();
 #endif
