@@ -36,6 +36,7 @@ public class IvyInsightsApp : ViewBase
         var client = UseService<IClientProvider>();
         var navigator = UseNavigation();
         var nugetProvider = UseService<INuGetStatisticsProvider>();
+        var updateService = UseService<IDatabaseUpdateService>();
         
         var statsQuery = this.UseQuery(
             key: $"nuget-stats/{PackageId}",
@@ -64,6 +65,7 @@ public class IvyInsightsApp : ViewBase
         var animatedVersions = this.UseState(0);
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
+        var isUpdatingDatabase = this.UseState(false);
         var showStargazersTodayDialog = this.UseState(false);
         var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
         {
@@ -591,9 +593,9 @@ public class IvyInsightsApp : ViewBase
             .Where(g => g.Key >= last30Days)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        // Generate data for the last 30 days (excluding today)
+        // Generate data for the last 30 days (including today)
         var stargazersChartData = new List<StargazersDailyChartData>();
-        for (int i = 30; i >= 1; i--)
+        for (int i = 30; i >= 0; i--)
         {
             var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-i));
             var joined = joinedByDate.ContainsKey(date) ? joinedByDate[date] : 0;
@@ -827,14 +829,45 @@ public class IvyInsightsApp : ViewBase
                             c.ShowSearch = true;
                         });
 
+            var refreshDbButton = new Button(isUpdatingDatabase.Value ? "Updating..." : "Refresh Stargazers")
+                .Icon(Icons.RefreshCcw)
+                .Variant(ButtonVariant.Outline)
+                .Disabled(isUpdatingDatabase.Value)
+                .HandleClick(async _ =>
+                {
+                    isUpdatingDatabase.Set(true);
+                    try
+                    {
+                        var result = await updateService.UpdateStargazersAsync();
+                        if (result.Success)
+                        {
+                            starsStatsQuery.Mutator.Revalidate();
+                            stargazersDailyQuery.Mutator.Revalidate();
+                            stargazersQuery.Mutator.Revalidate();
+                            await Task.Delay(300);
+                            refresh.Refresh();
+                        }
+                        else
+                        {
+                            client.Toast($"Update failed: {result.ErrorMessage}");
+                        }
+                    }
+                    finally
+                    {
+                        isUpdatingDatabase.Set(false);
+                    }
+                });
+
             stargazersTodayDialog = new Dialog(
                 onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
                 header: new DialogHeader("GitHub Stargazer Activity"),
-                body: new DialogBody(Layout.Vertical().Gap(2)
+                body: new DialogBody(Layout.Vertical()
                     .Key($"{fromDate:O}_{toDate:O}")
-                    | stargazersDateRange.ToDateRangeInput()
-                        .Placeholder("Select period")
-                        .Format("MMM dd, yyyy")
+                    | (Layout.Horizontal()
+                        | stargazersDateRange.ToDateRangeInput()
+                            .Placeholder("Select period")
+                            .Format("MMM dd, yyyy")
+                        | refreshDbButton)
                     | periodContent),
                 footer: new DialogFooter(
                     new Button("Close").HandleClick(_ => showStargazersTodayDialog.Set(false)))

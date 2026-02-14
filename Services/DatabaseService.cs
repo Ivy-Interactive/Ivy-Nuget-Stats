@@ -118,7 +118,7 @@ public class DatabaseService : IDatabaseService
                           AND (g.unstarred_at IS NULL OR (g.unstarred_at AT TIME ZONE 'UTC')::date > d::date)) AS stars
                 FROM generate_series(
                     CURRENT_DATE - @days,
-                    CURRENT_DATE - 1,
+                    CURRENT_DATE,
                     '1 day'::interval
                 ) AS d
                 ORDER BY d::date ASC;
