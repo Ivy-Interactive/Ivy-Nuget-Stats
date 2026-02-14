@@ -845,9 +845,9 @@ public class IvyInsightsApp : ViewBase
         if (selectedStargazer.Value is { } sg)
         {
             var daysAsStargazer = sg.IsActive && sg.StarredAt.HasValue
-                ? (DateTime.UtcNow - sg.StarredAt.Value).Days
+                ? (DateTime.UtcNow.Date - sg.StarredAt.Value.Date).Days
                 : sg.StarredAt.HasValue && sg.UnstarredAt.HasValue
-                    ? (sg.UnstarredAt.Value - sg.StarredAt.Value).Days
+                    ? (sg.UnstarredAt.Value.Date - sg.StarredAt.Value.Date).Days
                     : (int?)null;
 
             var detailModel = new
