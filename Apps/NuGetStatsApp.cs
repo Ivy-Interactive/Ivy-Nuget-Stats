@@ -69,8 +69,8 @@ public class IvyInsightsApp : ViewBase
         var showStargazersTodayDialog = this.UseState(false);
         var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
         {
-            var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-            return (yesterday, yesterday);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            return (today, today);
         });
         var selectedStargazer = this.UseState<GithubStargazer?>(() => null);
 
