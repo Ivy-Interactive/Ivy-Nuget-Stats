@@ -82,10 +82,10 @@ public class IvyInsightsApp : ViewBase
 
         var dbService = UseService<IDatabaseService>();
         var dailyStatsQuery = this.UseQuery(
-            key: "daily-download-stats",
+            key: "daily-download-stats-90",
             fetcher: async (CancellationToken ct) =>
             {
-                return await dbService.GetDailyDownloadStatsAsync(30, ct);
+                return await dbService.GetDailyDownloadStatsAsync(90, ct);
             },
             options: new QueryOptions
             {
@@ -450,8 +450,8 @@ public class IvyInsightsApp : ViewBase
             Layout.Vertical()
                 | (dailyDownloadsChart != null
                     ? dailyDownloadsChart
-                    : Text.Block("No data available for the last month").Muted())
-        ).Title("Daily Downloads (Last 30 Days)")
+                    : Text.Block("No data available for the last 90 days").Muted())
+        ).Title("Daily Downloads (Last 90 Days)")
          .Icon(Icons.ChartNoAxesCombined)
          .Height(Size.Full());
 
