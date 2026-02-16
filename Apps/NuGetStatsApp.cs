@@ -465,25 +465,26 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var versionChartCard = new Card(
-            Layout.Vertical()
-                | (Layout.Horizontal().Align(Align.Center)
-                    | versionChartDateRange.ToDateRangeInput()
-                        .Format("MMM dd, yyyy")
-                        .Placeholder("Select date range")
-                    | new Button(versionChartShowPreReleases.Value ? "With Pre-releases" : "Releases Only")
-                        .Outline()
-                        .Icon(Icons.ChevronDown)
-                        .WithDropDown(
-                            MenuItem.Default("With Pre-releases").HandleSelect(() => versionChartShowPreReleases.Set(true)),
-                            MenuItem.Default("Releases Only").HandleSelect(() => versionChartShowPreReleases.Set(false))
-                        )
-                    | new NumberInput<int>(versionChartCount)
-                        .Min(2)
-                        .Max(20)
-                        .Width(Size.Units(60)))
-                | (versionChart != null
-                    ? versionChart
-                    : Text.Block("No versions found").Muted())
+            Layout.Horizontal().Height(Size.Full())
+                 | ( Layout.Vertical()
+                    | (Layout.Horizontal().Align(Align.Center).Height(Size.Fit())
+                        | versionChartDateRange.ToDateRangeInput()
+                            .Format("MMM dd, yyyy")
+                            .Placeholder("Select date range")
+                        | new Button(versionChartShowPreReleases.Value ? "With Pre-releases" : "Releases Only")
+                            .Outline()
+                            .Icon(Icons.ChevronDown)
+                            .WithDropDown(
+                                MenuItem.Default("With Pre-releases").HandleSelect(() => versionChartShowPreReleases.Set(true)),
+                                MenuItem.Default("Releases Only").HandleSelect(() => versionChartShowPreReleases.Set(false))
+                            )
+                        | new NumberInput<int>(versionChartCount)
+                            .Min(2)
+                            .Max(20)
+                            .Width(Size.Units(60)))
+                    | (versionChart != null
+                        ? versionChart
+                        : Text.Block("No versions found").Muted()))
         ).Title("Recent Versions Distribution").Icon(Icons.ChartBar);
 
         var starsStats = starsStatsQuery.Value ?? new List<GithubStarsStats>();
@@ -517,7 +518,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var githubStarsCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (starsChart != null 
                     ? starsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -620,7 +621,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var stargazersDailyCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (stargazersChart != null 
                     ? stargazersChart 
                     : (object)Text.Block("No data available").Muted())
@@ -645,7 +646,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var totalDownloadsCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (totalDownloadsChart != null 
                     ? totalDownloadsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -909,10 +910,10 @@ public class IvyInsightsApp : ViewBase
                 | adoptionCard
                 | monthlyDownloadsCard
                 | weeklyGrowthCard)
-            | (Layout.Horizontal().Width(Size.Fraction(0.9f))
+            | (Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | versionChartCard
                 | totalDownloadsCard)
-            | ( Layout.Horizontal().Width(Size.Fraction(0.9f))
+            | ( Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | githubStarsCard
                 | stargazersDailyCard )
             | versionsTableCard
