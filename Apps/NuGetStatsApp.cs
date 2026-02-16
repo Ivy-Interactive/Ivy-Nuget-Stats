@@ -34,20 +34,16 @@ public class IvyInsightsApp : ViewBase
     public override object? Build()
     {
         var client = UseService<IClientProvider>();
+        var navigator = UseNavigation();
         var nugetProvider = UseService<INuGetStatisticsProvider>();
+        var updateService = UseService<IDatabaseUpdateService>();
         
         var statsQuery = this.UseQuery(
             key: $"nuget-stats/{PackageId}",
             fetcher: async (CancellationToken ct) =>
             {
                 var statistics = await nugetProvider.GetPackageStatisticsAsync(PackageId, ct);
-                
-                try
-                {
-                    client.Toast($"Successfully loaded statistics for {PackageId}!");
-                }
-                catch { }
-                
+                client.Toast($"Successfully loaded statistics for {PackageId}!");
                 return statistics;
             },
             options: new QueryOptions
@@ -63,16 +59,16 @@ public class IvyInsightsApp : ViewBase
         var animatedVersions = this.UseState(0);
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
-        var showStargazersList = this.UseState(false);
+        var isUpdatingDatabase = this.UseState(false);
+        var stargazerRefreshVersion = this.UseState(0);
         var showStargazersTodayDialog = this.UseState(false);
         var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
         {
-            var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-            return (yesterday, yesterday);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            return (today, today);
         });
-        var stargazersSearchTerm = this.UseState("");
-        var stargazersFilter = this.UseState("all"); // "all" | "active" | "unstarred"
         var selectedStargazer = this.UseState<GithubStargazer?>(() => null);
+        var cachedStargazers = this.UseState<List<GithubStargazer>>(() => new List<GithubStargazer>());
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
             DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
@@ -82,10 +78,10 @@ public class IvyInsightsApp : ViewBase
 
         var dbService = UseService<IDatabaseService>();
         var dailyStatsQuery = this.UseQuery(
-            key: "daily-download-stats",
+            key: "daily-download-stats-90",
             fetcher: async (CancellationToken ct) =>
             {
-                return await dbService.GetDailyDownloadStatsAsync(30, ct);
+                return await dbService.GetDailyDownloadStatsAsync(90, ct);
             },
             options: new QueryOptions
             {
@@ -111,20 +107,6 @@ public class IvyInsightsApp : ViewBase
             },
             tags: ["database", "stars"]);
 
-        var stargazersDailyQuery = this.UseQuery(
-            key: "github-stargazers-daily",
-            fetcher: async (CancellationToken ct) =>
-            {
-                return await dbService.GetGithubStargazersDailyStatsAsync(365, ct);
-            },
-            options: new QueryOptions
-            {
-                Scope = QueryScope.Server,
-                Expiration = TimeSpan.FromMinutes(5),
-                KeepPrevious = true,
-                RevalidateOnMount = true
-            },
-            tags: ["database", "stargazers"]);
 
         var totalDownloadsStatsQuery = this.UseQuery(
             key: "total-downloads-stats-365",
@@ -142,7 +124,7 @@ public class IvyInsightsApp : ViewBase
             tags: ["database", "downloads", "total"]);
 
         var stargazersQuery = this.UseQuery(
-            key: "github-stargazers-list",
+            key: $"github-stargazers-list/{stargazerRefreshVersion.Value}",
             fetcher: async (CancellationToken ct) =>
             {
                 return await dbService.GetGithubStargazersAsync(ct);
@@ -155,6 +137,12 @@ public class IvyInsightsApp : ViewBase
                 RevalidateOnMount = false
             },
             tags: ["database", "stargazers", "list"]);
+
+        // Cache stargazers data so old data stays visible while a new query loads
+        if (stargazersQuery.Value is { Count: > 0 } freshStargazers && !ReferenceEquals(freshStargazers, cachedStargazers.Value))
+        {
+            cachedStargazers.Set(freshStargazers);
+        }
 
         var filteredVersionChartQuery = this.UseQuery(
             key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
@@ -293,24 +281,11 @@ public class IvyInsightsApp : ViewBase
 
         var now = DateTime.UtcNow;
         var thisMonthStart = new DateTime(now.Year, now.Month, 1);
-        var lastMonthStart = thisMonthStart.AddMonths(-1);
-        var lastMonthEnd = thisMonthStart;
         
-        var versionsLastMonth = s.Versions
-            .Count(v => v.Published.HasValue && 
-                       v.Published.Value >= lastMonthStart && 
-                       v.Published.Value < lastMonthEnd);
         var versionsThisMonth = s.Versions
             .Count(v => v.Published.HasValue && 
                        v.Published.Value >= thisMonthStart && 
                        v.Published.Value < now);
-        
-        var downloadsLastMonth = s.Versions
-            .Where(v => v.Published.HasValue && 
-                       v.Published.Value >= lastMonthStart && 
-                       v.Published.Value < lastMonthEnd &&
-                       v.Downloads.HasValue)
-            .Sum(v => v.Downloads!.Value);
         
         // Use daily stats from database
         var dailyStats = dailyStatsQuery.Value ?? new List<DailyDownloadStats>();
@@ -323,7 +298,6 @@ public class IvyInsightsApp : ViewBase
             .Select(d => new
             {
                 Date = d.Date.ToString("MMM dd"),
-                DateOnly = d.Date,
                 Downloads = (double)Math.Max(0, d.DailyGrowth)
             })
             .ToList();
@@ -387,14 +361,6 @@ public class IvyInsightsApp : ViewBase
             // If previous week is 0, show the current count as percentage growth (e.g. 0 -> 404 = +404%)
             growthPercent = (double)thisWeekDownloads;
         }
-        
-        var downloadsThisMonth = dailyStats
-            .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
-            .Sum(d => Math.Max(0, d.DailyGrowth));
-
-        var avgMonthlyDownloads = dailyChartData.Count > 0 
-            ? dailyChartData.Average(d => d.Downloads) * 30 // Average daily * 30 days
-            : 0.0;
 
         var latestVersionInfo = s.Versions.FirstOrDefault(v => v.Version == s.LatestVersion);
         
@@ -429,12 +395,6 @@ public class IvyInsightsApp : ViewBase
                     | Text.Block("No versions released in the last 30 days").Muted()
             ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Crown).Height(Size.Full());
 
-        var percentDiff = avgMonthlyDownloads > 0
-            ? Math.Round(((downloadsThisMonth - avgMonthlyDownloads) / avgMonthlyDownloads) * 100, 1)
-            : 0.0;
-
-        var isGrowing = downloadsThisMonth > avgMonthlyDownloads;
-
         var dailyDownloadsChart = dailyChartDataWithAverage.Count > 0
             ? dailyChartDataWithAverage
                 .ToLineChart(
@@ -450,8 +410,8 @@ public class IvyInsightsApp : ViewBase
             Layout.Vertical()
                 | (dailyDownloadsChart != null
                     ? dailyDownloadsChart
-                    : Text.Block("No data available for the last month").Muted())
-        ).Title("Daily Downloads (Last 30 Days)")
+                    : Text.Block("No data available for the last 90 days").Muted())
+        ).Title("Daily Downloads (Last 90 Days)")
          .Icon(Icons.ChartNoAxesCombined)
          .Height(Size.Full());
 
@@ -465,25 +425,26 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var versionChartCard = new Card(
-            Layout.Vertical()
-                | (Layout.Horizontal().Align(Align.Center)
-                    | versionChartDateRange.ToDateRangeInput()
-                        .Format("MMM dd, yyyy")
-                        .Placeholder("Select date range")
-                    | new Button(versionChartShowPreReleases.Value ? "With Pre-releases" : "Releases Only")
-                        .Outline()
-                        .Icon(Icons.ChevronDown)
-                        .WithDropDown(
-                            MenuItem.Default("With Pre-releases").HandleSelect(() => versionChartShowPreReleases.Set(true)),
-                            MenuItem.Default("Releases Only").HandleSelect(() => versionChartShowPreReleases.Set(false))
-                        )
-                    | new NumberInput<int>(versionChartCount)
-                        .Min(2)
-                        .Max(20)
-                        .Width(Size.Units(60)))
-                | (versionChart != null
-                    ? versionChart
-                    : Text.Block("No versions found").Muted())
+            Layout.Horizontal().Height(Size.Full())
+                 | ( Layout.Vertical()
+                    | (Layout.Horizontal().Align(Align.Center).Height(Size.Fit())
+                        | versionChartDateRange.ToDateRangeInput()
+                            .Format("MMM dd, yyyy")
+                            .Placeholder("Select date range")
+                        | new Button(versionChartShowPreReleases.Value ? "With Pre-releases" : "Releases Only")
+                            .Outline()
+                            .Icon(Icons.ChevronDown)
+                            .WithDropDown(
+                                MenuItem.Default("With Pre-releases").HandleSelect(() => versionChartShowPreReleases.Set(true)),
+                                MenuItem.Default("Releases Only").HandleSelect(() => versionChartShowPreReleases.Set(false))
+                            )
+                        | new NumberInput<int>(versionChartCount)
+                            .Min(2)
+                            .Max(20)
+                            .Width(Size.Units(60)))
+                    | (versionChart != null
+                        ? versionChart
+                        : Text.Block("No versions found").Muted()))
         ).Title("Recent Versions Distribution").Icon(Icons.ChartBar);
 
         var starsStats = starsStatsQuery.Value ?? new List<GithubStarsStats>();
@@ -517,7 +478,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var githubStarsCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (starsChart != null 
                     ? starsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -576,26 +537,26 @@ public class IvyInsightsApp : ViewBase
                  }
              });
 
-        var allStargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
-        var last365Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-365));
-        
+        var allStargazers = stargazersQuery.Value ?? cachedStargazers.Value;
+        var last30Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
+
         // Group stargazers by the date they joined
         var joinedByDate = allStargazers
             .Where(sg => sg.StarredAt.HasValue)
             .GroupBy(sg => DateOnly.FromDateTime(sg.StarredAt!.Value))
-            .Where(g => g.Key >= last365Days)
+            .Where(g => g.Key >= last30Days)
             .ToDictionary(g => g.Key, g => g.Count());
-        
+
         // Group stargazers by the date they left
         var leftByDate = allStargazers
             .Where(sg => sg.UnstarredAt.HasValue)
             .GroupBy(sg => DateOnly.FromDateTime(sg.UnstarredAt!.Value))
-            .Where(g => g.Key >= last365Days)
+            .Where(g => g.Key >= last30Days)
             .ToDictionary(g => g.Key, g => g.Count());
-        
-        // Generate data for all days in the last 365 days
+
+        // Generate data for the last 30 days (including today)
         var stargazersChartData = new List<StargazersDailyChartData>();
-        for (int i = 365; i >= 0; i--)
+        for (int i = 30; i >= 0; i--)
         {
             var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-i));
             var joined = joinedByDate.ContainsKey(date) ? joinedByDate[date] : 0;
@@ -620,11 +581,11 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var stargazersDailyCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (stargazersChart != null 
                     ? stargazersChart 
                     : (object)Text.Block("No data available").Muted())
-        ).Title("Stargazers Daily (New vs Unstarred) - Last 365 Days").Icon(Icons.Users);
+        ).Title("Stargazers Daily (New vs Unstarred) - Last 30 Days").Icon(Icons.Users).Key($"stargazers-daily-card-{stargazerRefreshVersion.Value}");
 
         var totalDownloadsStats = totalDownloadsStatsQuery.Value ?? new List<DailyDownloadStats>();
         
@@ -645,7 +606,7 @@ public class IvyInsightsApp : ViewBase
             : null;
 
         var totalDownloadsCard = new Card(
-            Layout.Vertical()
+            Layout.Horizontal().Height(Size.Full())
                 | (totalDownloadsChart != null 
                     ? totalDownloadsChart 
                     : (object)Text.Block("No data available").Muted())
@@ -744,13 +705,12 @@ public class IvyInsightsApp : ViewBase
         ).Title($"All Versions ({allVersionsTable.Count})").Icon(Icons.List).Width(Size.Fraction(0.9f));
 
         Dialog? stargazersTodayDialog = null;
-        Sheet? stargazersSheet = null;
         
         // Stargazer activity by period dialog
         if (showStargazersTodayDialog.Value)
         {
             var (fromDate, toDate) = stargazersDateRange.Value;
-            var stargazers = stargazersQuery.Value ?? [];
+            var stargazers = stargazersQuery.Value ?? cachedStargazers.Value;
 
             var periodEvents = stargazers
                 .SelectMany(sg =>
@@ -785,9 +745,7 @@ public class IvyInsightsApp : ViewBase
                 .Select(e => new
                 {
                     e.Username,
-                    StatusBadge = e.Action == "Joined"
-                        ? (object)new Badge("Joined")
-                        : new Badge("Left").Variant(BadgeVariant.Destructive),
+                    Action = new[] { e.Action },
                     e.When,
                     e.DaysJoined
                 })
@@ -795,99 +753,94 @@ public class IvyInsightsApp : ViewBase
 
             var periodContent = stargazersQuery.Loading
                 ? (object)Text.Block("Loading stargazer changes...").Muted()
-                : periodEvents.ToTable()
-                    .Width(Size.Full())
-                    .Header(e => e.Username, "User")
-                    .Header(e => e.StatusBadge, "Action")
-                    .Header(e => e.When, "When")
-                    .Header(e => e.DaysJoined, "Days")
-                    .Align(e => e.When, Align.Right)
-                    .Align(e => e.DaysJoined, Align.Right)
-                    .Empty(Text.Block("No joins or leaves in the selected period.").Muted());
+                : periodEvents.Count == 0
+                    ? (object)Text.Block("No joins or leaves in the selected period.").Muted()
+                    : periodEvents.AsQueryable()
+                        .ToDataTable(idSelector: e => e.Username)
+                        .Height(Size.Units(120))
+                        .Header(e => e.Username, "User")
+                        .Header(e => e.Action, "Action")
+                        .Header(e => e.When, "When")
+                        .Header(e => e.DaysJoined, "Days")
+                        .RowActions(
+                            MenuItem.Default(Icons.User, "profile").Tag("profile"),
+                            MenuItem.Default(Icons.Eye, "view").Tag("view")
+                        )
+                        .HandleRowAction(e =>
+                        {
+                            var args = e.Value;
+                            var tag = args.Tag?.ToString();
+                            var username = args.Id?.ToString();
+                            if (string.IsNullOrEmpty(username)) return ValueTask.CompletedTask;
+                            if (tag == "view")
+                            {
+                                var sg = stargazers.FirstOrDefault(s => s.Username == username);
+                                if (sg != null) selectedStargazer.Set(sg);
+                            }
+                            else if (tag == "profile")
+                            {
+                                navigator.Navigate($"https://github.com/{username}");
+                            }
+                            return ValueTask.CompletedTask;
+                        })
+                        .Config(c =>
+                        {
+                            c.AllowSorting = true;
+                            c.AllowFiltering = true;
+                            c.ShowSearch = true;
+                        });
+
+            var refreshDbButton = new Button(isUpdatingDatabase.Value ? "Updating..." : "Refresh Stargazers")
+                .Icon(Icons.RefreshCcw)
+                .Variant(ButtonVariant.Outline)
+                .Disabled(isUpdatingDatabase.Value)
+                .HandleClick(async _ =>
+                {
+                    isUpdatingDatabase.Set(true);
+                    try
+                    {
+                        var result = await updateService.UpdateStargazersAsync();
+                        if (result.Success)
+                        {
+                            // Revalidate related queries
+                            starsStatsQuery.Mutator.Revalidate();
+                            await Task.Delay(1000);
+                            stargazerRefreshVersion.Set(stargazerRefreshVersion.Value + 1);
+                        }
+                        else
+                        {
+                            client.Toast($"Update failed: {result.ErrorMessage}");
+                        }
+                    }
+                    finally
+                    {
+                        isUpdatingDatabase.Set(false);
+                    }
+                });
 
             stargazersTodayDialog = new Dialog(
                 onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
                 header: new DialogHeader("GitHub Stargazer Activity"),
-                body: new DialogBody(Layout.Vertical().Gap(2)
-                    | stargazersDateRange.ToDateRangeInput()
-                        .Placeholder("Select period")
-                        .Format("MMM dd, yyyy")
+                body: new DialogBody(Layout.Vertical()
+                    .Key($"{fromDate:O}_{toDate:O}_{stargazerRefreshVersion.Value}")
+                    | (Layout.Horizontal()
+                        | stargazersDateRange.ToDateRangeInput()
+                            .Placeholder("Select period")
+                            .Format("MMM dd, yyyy")
+                        | refreshDbButton)
                     | periodContent),
                 footer: new DialogFooter(
-                    new Button("View full list")
-                        .Variant(ButtonVariant.Outline)
-                        .HandleClick(_ =>
-                        {
-                            showStargazersTodayDialog.Set(false);
-                            showStargazersList.Set(true);
-                            stargazersQuery.Mutator.Revalidate();
-                        }))
+                    new Button("Close").HandleClick(_ => showStargazersTodayDialog.Set(false)))
             ).Width(Size.Units(220));
-        }
-        
-        // Full stargazers list overlay/sheet
-        if (showStargazersList.Value)
-        {
-            var stargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
-
-            var filteredStargazers = stargazers.AsEnumerable();
-            if (stargazersFilter.Value == "active")
-                filteredStargazers = filteredStargazers.Where(sg => sg.IsActive);
-            else if (stargazersFilter.Value == "unstarred")
-                filteredStargazers = filteredStargazers.Where(sg => !sg.IsActive);
-            if (!string.IsNullOrWhiteSpace(stargazersSearchTerm.Value))
-                filteredStargazers = filteredStargazers.Where(sg =>
-                    sg.Username.Contains(stargazersSearchTerm.Value, StringComparison.OrdinalIgnoreCase));
-            var filteredList = filteredStargazers.ToList();
-
-            var stargazerItems = filteredList.Select(sg =>
-                new ListItem(
-                    title: sg.Username,
-                    subtitle: sg.IsActive ? "Active" : $"Unstarred {(sg.UnstarredAt.HasValue ? sg.UnstarredAt.Value.ToString("MMM dd, yyyy") : "-")}",
-                    icon: Icons.User,
-                    badge: sg.IsActive ? "Active" : "Unstarred",
-                    onClick: new Action<Event<ListItem>>(_ => selectedStargazer.Set(sg))
-                )
-            );
-
-            var filterLabel = stargazersFilter.Value switch
-            {
-                "active" => "Active only",
-                "unstarred" => "Unstarred only",
-                _ => "All"
-            };
-
-            stargazersSheet = new Sheet(
-                onClose: (Event<Sheet> _) => showStargazersList.Set(false),
-                content: Layout.Vertical()
-                    | (stargazersQuery.Loading
-                        ? (object)Text.Block("Loading stargazers...").Muted()
-                        : (Layout.Vertical()
-                            | (Layout.Horizontal().Width(Size.Full())
-                                | stargazersSearchTerm.ToSearchInput().Placeholder("Search by username...")
-                                | new Button(filterLabel)
-                                    .Variant(ButtonVariant.Outline)
-                                    .Icon(Icons.ChevronDown)
-                                    .WithDropDown(
-                                        MenuItem.Default("All").HandleSelect(() => stargazersFilter.Set("all")),
-                                        MenuItem.Default("Active only").HandleSelect(() => stargazersFilter.Set("active")),
-                                        MenuItem.Default("Unstarred only").HandleSelect(() => stargazersFilter.Set("unstarred")))
-                            )
-                            | (filteredList.Count > 0
-                                ? new List(stargazerItems)
-                                : (object)Text.Block("No stargazers match the search or filter").Muted()))),
-                title: "GitHub Stargazers",
-                description: "Tap a user to see details."
-            ).Width(Size.Rem(25));
         }
 
         Dialog? stargazerDetailDialog = null;
         if (selectedStargazer.Value is { } sg)
         {
             var daysAsStargazer = sg.IsActive && sg.StarredAt.HasValue
-                ? (DateTime.UtcNow - sg.StarredAt.Value).Days
+                ? (DateTime.UtcNow.Date - sg.StarredAt.Value.Date).Days
                 : sg.StarredAt.HasValue && sg.UnstarredAt.HasValue
-                    ? (sg.UnstarredAt.Value - sg.StarredAt.Value).Days
+                    ? (sg.UnstarredAt.Value.Date - sg.StarredAt.Value.Date).Days
                     : (int?)null;
 
             var detailModel = new
@@ -913,15 +866,14 @@ public class IvyInsightsApp : ViewBase
                 | adoptionCard
                 | monthlyDownloadsCard
                 | weeklyGrowthCard)
-            | (Layout.Horizontal().Width(Size.Fraction(0.9f))
+            | (Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | versionChartCard
                 | totalDownloadsCard)
-            | ( Layout.Horizontal().Width(Size.Fraction(0.9f))
+            | ( Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | githubStarsCard
                 | stargazersDailyCard )
             | versionsTableCard
             | stargazersTodayDialog
-            | stargazersSheet
             | stargazerDetailDialog;
     }
 }
