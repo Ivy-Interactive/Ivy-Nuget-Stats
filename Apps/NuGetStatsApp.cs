@@ -66,6 +66,7 @@ public class IvyInsightsApp : ViewBase
         var refresh = this.UseRefreshToken();
         var hasAnimated = this.UseState(false);
         var isUpdatingDatabase = this.UseState(false);
+        var stargazerRefreshVersion = this.UseState(0);
         var showStargazersTodayDialog = this.UseState(false);
         var stargazersDateRange = this.UseState<(DateOnly, DateOnly)>(() =>
         {
@@ -73,6 +74,7 @@ public class IvyInsightsApp : ViewBase
             return (today, today);
         });
         var selectedStargazer = this.UseState<GithubStargazer?>(() => null);
+        var cachedStargazers = this.UseState<List<GithubStargazer>>(() => new List<GithubStargazer>());
 
         var versionChartDateRange = this.UseState<(DateOnly?, DateOnly?)>(() => (
             DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), 
@@ -112,7 +114,7 @@ public class IvyInsightsApp : ViewBase
             tags: ["database", "stars"]);
 
         var stargazersDailyQuery = this.UseQuery(
-            key: "github-stargazers-daily",
+            key: $"github-stargazers-daily/{stargazerRefreshVersion.Value}",
             fetcher: async (CancellationToken ct) =>
             {
                 return await dbService.GetGithubStargazersDailyStatsAsync(365, ct);
@@ -142,7 +144,7 @@ public class IvyInsightsApp : ViewBase
             tags: ["database", "downloads", "total"]);
 
         var stargazersQuery = this.UseQuery(
-            key: "github-stargazers-list",
+            key: $"github-stargazers-list/{stargazerRefreshVersion.Value}",
             fetcher: async (CancellationToken ct) =>
             {
                 return await dbService.GetGithubStargazersAsync(ct);
@@ -155,6 +157,12 @@ public class IvyInsightsApp : ViewBase
                 RevalidateOnMount = false
             },
             tags: ["database", "stargazers", "list"]);
+
+        // Cache stargazers data so old data stays visible while a new query loads
+        if (stargazersQuery.Value is { Count: > 0 } freshStargazers && !ReferenceEquals(freshStargazers, cachedStargazers.Value))
+        {
+            cachedStargazers.Set(freshStargazers);
+        }
 
         var filteredVersionChartQuery = this.UseQuery(
             key: $"version-chart-filtered/{PackageId}/{statsQuery.Value != null}/{versionChartDateRange.Value.Item1?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartDateRange.Value.Item2?.ToString("yyyy-MM-dd") ?? "null"}/{versionChartShowPreReleases.Value}/{versionChartCount.Value}",
@@ -577,7 +585,7 @@ public class IvyInsightsApp : ViewBase
                  }
              });
 
-        var allStargazers = stargazersQuery.Value ?? new List<GithubStargazer>();
+        var allStargazers = stargazersQuery.Value ?? cachedStargazers.Value;
         var last30Days = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
 
         // Group stargazers by the date they joined
@@ -625,7 +633,7 @@ public class IvyInsightsApp : ViewBase
                 | (stargazersChart != null 
                     ? stargazersChart 
                     : (object)Text.Block("No data available").Muted())
-        ).Title("Stargazers Daily (New vs Unstarred) - Last 30 Days").Icon(Icons.Users);
+        ).Title("Stargazers Daily (New vs Unstarred) - Last 30 Days").Icon(Icons.Users).Key($"stargazers-daily-card-{stargazerRefreshVersion.Value}");
 
         var totalDownloadsStats = totalDownloadsStatsQuery.Value ?? new List<DailyDownloadStats>();
         
@@ -750,7 +758,7 @@ public class IvyInsightsApp : ViewBase
         if (showStargazersTodayDialog.Value)
         {
             var (fromDate, toDate) = stargazersDateRange.Value;
-            var stargazers = stargazersQuery.Value ?? [];
+            var stargazers = stargazersQuery.Value ?? cachedStargazers.Value;
 
             var periodEvents = stargazers
                 .SelectMany(sg =>
@@ -842,14 +850,10 @@ public class IvyInsightsApp : ViewBase
                         var result = await updateService.UpdateStargazersAsync();
                         if (result.Success)
                         {
-                            // Revalidate queries to fetch fresh data while keeping previous values visible
-                            // Thanks to KeepPrevious=true, old data stays visible until new data loads
+                            // Revalidate related queries
                             starsStatsQuery.Mutator.Revalidate();
-                            stargazersDailyQuery.Mutator.Revalidate();
-                            stargazersQuery.Mutator.Revalidate();
-                            
-                            await Task.Delay(100);
-                            refresh.Refresh();
+                            await Task.Delay(1000);
+                            stargazerRefreshVersion.Set(stargazerRefreshVersion.Value + 1);
                         }
                         else
                         {
@@ -866,7 +870,7 @@ public class IvyInsightsApp : ViewBase
                 onClose: (Event<Dialog> _) => showStargazersTodayDialog.Set(false),
                 header: new DialogHeader("GitHub Stargazer Activity"),
                 body: new DialogBody(Layout.Vertical()
-                    .Key($"{fromDate:O}_{toDate:O}")
+                    .Key($"{fromDate:O}_{toDate:O}_{stargazerRefreshVersion.Value}")
                     | (Layout.Horizontal()
                         | stargazersDateRange.ToDateRangeInput()
                             .Placeholder("Select period")
