@@ -43,13 +43,7 @@ public class IvyInsightsApp : ViewBase
             fetcher: async (CancellationToken ct) =>
             {
                 var statistics = await nugetProvider.GetPackageStatisticsAsync(PackageId, ct);
-                
-                try
-                {
-                    client.Toast($"Successfully loaded statistics for {PackageId}!");
-                }
-                catch { }
-                
+                client.Toast($"Successfully loaded statistics for {PackageId}!");
                 return statistics;
             },
             options: new QueryOptions
@@ -113,20 +107,6 @@ public class IvyInsightsApp : ViewBase
             },
             tags: ["database", "stars"]);
 
-        var stargazersDailyQuery = this.UseQuery(
-            key: $"github-stargazers-daily/{stargazerRefreshVersion.Value}",
-            fetcher: async (CancellationToken ct) =>
-            {
-                return await dbService.GetGithubStargazersDailyStatsAsync(365, ct);
-            },
-            options: new QueryOptions
-            {
-                Scope = QueryScope.Server,
-                Expiration = TimeSpan.FromMinutes(5),
-                KeepPrevious = true,
-                RevalidateOnMount = true
-            },
-            tags: ["database", "stargazers"]);
 
         var totalDownloadsStatsQuery = this.UseQuery(
             key: "total-downloads-stats-365",
@@ -301,24 +281,11 @@ public class IvyInsightsApp : ViewBase
 
         var now = DateTime.UtcNow;
         var thisMonthStart = new DateTime(now.Year, now.Month, 1);
-        var lastMonthStart = thisMonthStart.AddMonths(-1);
-        var lastMonthEnd = thisMonthStart;
         
-        var versionsLastMonth = s.Versions
-            .Count(v => v.Published.HasValue && 
-                       v.Published.Value >= lastMonthStart && 
-                       v.Published.Value < lastMonthEnd);
         var versionsThisMonth = s.Versions
             .Count(v => v.Published.HasValue && 
                        v.Published.Value >= thisMonthStart && 
                        v.Published.Value < now);
-        
-        var downloadsLastMonth = s.Versions
-            .Where(v => v.Published.HasValue && 
-                       v.Published.Value >= lastMonthStart && 
-                       v.Published.Value < lastMonthEnd &&
-                       v.Downloads.HasValue)
-            .Sum(v => v.Downloads!.Value);
         
         // Use daily stats from database
         var dailyStats = dailyStatsQuery.Value ?? new List<DailyDownloadStats>();
@@ -331,7 +298,6 @@ public class IvyInsightsApp : ViewBase
             .Select(d => new
             {
                 Date = d.Date.ToString("MMM dd"),
-                DateOnly = d.Date,
                 Downloads = (double)Math.Max(0, d.DailyGrowth)
             })
             .ToList();
@@ -395,14 +361,6 @@ public class IvyInsightsApp : ViewBase
             // If previous week is 0, show the current count as percentage growth (e.g. 0 -> 404 = +404%)
             growthPercent = (double)thisWeekDownloads;
         }
-        
-        var downloadsThisMonth = dailyStats
-            .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
-            .Sum(d => Math.Max(0, d.DailyGrowth));
-
-        var avgMonthlyDownloads = dailyChartData.Count > 0 
-            ? dailyChartData.Average(d => d.Downloads) * 30 // Average daily * 30 days
-            : 0.0;
 
         var latestVersionInfo = s.Versions.FirstOrDefault(v => v.Version == s.LatestVersion);
         
@@ -436,12 +394,6 @@ public class IvyInsightsApp : ViewBase
                 Layout.Vertical().Align(Align.Center)
                     | Text.Block("No versions released in the last 30 days").Muted()
             ).Title("Top Popular Versions (Last 30 Days)").Icon(Icons.Crown).Height(Size.Full());
-
-        var percentDiff = avgMonthlyDownloads > 0
-            ? Math.Round(((downloadsThisMonth - avgMonthlyDownloads) / avgMonthlyDownloads) * 100, 1)
-            : 0.0;
-
-        var isGrowing = downloadsThisMonth > avgMonthlyDownloads;
 
         var dailyDownloadsChart = dailyChartDataWithAverage.Count > 0
             ? dailyChartDataWithAverage
@@ -814,12 +766,12 @@ public class IvyInsightsApp : ViewBase
                             MenuItem.Default(Icons.User, "profile").Tag("profile"),
                             MenuItem.Default(Icons.Eye, "view").Tag("view")
                         )
-                        .HandleRowAction(async e =>
+                        .HandleRowAction(e =>
                         {
                             var args = e.Value;
                             var tag = args.Tag?.ToString();
                             var username = args.Id?.ToString();
-                            if (string.IsNullOrEmpty(username)) return;
+                            if (string.IsNullOrEmpty(username)) return ValueTask.CompletedTask;
                             if (tag == "view")
                             {
                                 var sg = stargazers.FirstOrDefault(s => s.Username == username);
@@ -829,7 +781,7 @@ public class IvyInsightsApp : ViewBase
                             {
                                 navigator.Navigate($"https://github.com/{username}");
                             }
-                            await ValueTask.CompletedTask;
+                            return ValueTask.CompletedTask;
                         })
                         .Config(c =>
                         {
