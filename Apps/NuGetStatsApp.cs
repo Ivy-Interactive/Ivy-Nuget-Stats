@@ -841,10 +841,13 @@ public class IvyInsightsApp : ViewBase
                         var result = await updateService.UpdateStargazersAsync();
                         if (result.Success)
                         {
+                            // Revalidate queries to fetch fresh data while keeping previous values visible
+                            // Thanks to KeepPrevious=true, old data stays visible until new data loads
                             starsStatsQuery.Mutator.Revalidate();
                             stargazersDailyQuery.Mutator.Revalidate();
                             stargazersQuery.Mutator.Revalidate();
-                            await Task.Delay(300);
+                            
+                            await Task.Delay(100);
                             refresh.Refresh();
                         }
                         else
