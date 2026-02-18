@@ -36,7 +36,7 @@ server.UseHotReload();
 
 server.AddAppsFromAssembly();
 server.AddConnectionsFromAssembly();
-server.ReservePaths("/starred", "/unstarred", "/stars");
+server.ReservePaths("/starred", "/unstarred", "/stars", "/downloads", "/summary");
 
 server.UseWebApplication(app =>
 {
@@ -60,6 +60,48 @@ server.UseWebApplication(app =>
         var starred = all.Count(s => s.IsActive);
         var unstarred = all.Count(s => !s.IsActive);
         return Results.Ok(new { starred, unstarred, totalEver = all.Count });
+    });
+
+    app.MapGet("/stars", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var all = await db.GetGithubStargazersAsync(ct);
+        var stars = all.Count(s => s.IsActive);
+        return Results.Ok(new { stars });
+    });
+
+    app.MapGet("/downloads", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var daily = await db.GetDailyDownloadStatsAsync(days: 2, ct);
+        var latest = daily.FirstOrDefault();
+        return Results.Ok(new
+        {
+            totalDownloads = latest?.TotalDownloads ?? 0L,
+            dailyGrowth = latest?.DailyGrowth ?? 0L,
+            asOfDate = latest?.Date.ToString("O") ?? (string?)null
+        });
+    });
+
+    app.MapGet("/downloads/history", async (IDatabaseService db, int days = 30, CancellationToken ct = default) =>
+    {
+        var daily = await db.GetDailyDownloadStatsAsync(days: Math.Clamp(days, 1, 365), ct);
+        return Results.Ok(daily.Select(s => new { s.Date, s.TotalDownloads, s.DailyGrowth }));
+    });
+
+    app.MapGet("/summary", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var stargazers = await db.GetGithubStargazersAsync(ct);
+        var daily = await db.GetDailyDownloadStatsAsync(days: 2, ct);
+        var latest = daily.FirstOrDefault();
+        return Results.Ok(new
+        {
+            stars = stargazers.Count(s => s.IsActive),
+            starredCount = stargazers.Count(s => s.IsActive),
+            unstarredCount = stargazers.Count(s => !s.IsActive),
+            totalStargazersEver = stargazers.Count,
+            totalDownloads = latest?.TotalDownloads ?? 0L,
+            downloadsDailyGrowth = latest?.DailyGrowth ?? 0L,
+            downloadsAsOfDate = latest?.Date.ToString("O") ?? (string?)null
+        });
     });
 });
 
