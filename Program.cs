@@ -1,5 +1,7 @@
 using IvyInsights.Apps;
 using IvyInsights.Services;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 
@@ -34,5 +36,31 @@ server.UseHotReload();
 
 server.AddAppsFromAssembly();
 server.AddConnectionsFromAssembly();
+server.ReservePaths("/starred", "/unstarred", "/stars");
+
+server.UseWebApplication(app =>
+{
+    app.MapGet("/starred", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var all = await db.GetGithubStargazersAsync(ct);
+        var starred = all.Where(s => s.IsActive).Select(s => new { s.Username, s.StarredAt });
+        return Results.Ok(starred);
+    });
+
+    app.MapGet("/unstarred", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var all = await db.GetGithubStargazersAsync(ct);
+        var unstarred = all.Where(s => !s.IsActive).Select(s => new { s.Username, s.StarredAt, s.UnstarredAt });
+        return Results.Ok(unstarred);
+    });
+
+    app.MapGet("/stars/count", async (IDatabaseService db, CancellationToken ct) =>
+    {
+        var all = await db.GetGithubStargazersAsync(ct);
+        var starred = all.Count(s => s.IsActive);
+        var unstarred = all.Count(s => !s.IsActive);
+        return Results.Ok(new { starred, unstarred, totalEver = all.Count });
+    });
+});
 
 await server.RunAsync();
