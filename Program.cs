@@ -54,19 +54,12 @@ server.UseWebApplication(app =>
         return Results.Ok(unstarred);
     });
 
-    app.MapGet("/stars/count", async (IDatabaseService db, CancellationToken ct) =>
+    app.MapGet("/stars", async (IDatabaseService db, CancellationToken ct) =>
     {
         var all = await db.GetGithubStargazersAsync(ct);
         var starred = all.Count(s => s.IsActive);
         var unstarred = all.Count(s => !s.IsActive);
         return Results.Ok(new { starred, unstarred, totalEver = all.Count });
-    });
-
-    app.MapGet("/stars", async (IDatabaseService db, CancellationToken ct) =>
-    {
-        var all = await db.GetGithubStargazersAsync(ct);
-        var stars = all.Count(s => s.IsActive);
-        return Results.Ok(new { stars });
     });
 
     app.MapGet("/downloads", async (IDatabaseService db, CancellationToken ct) =>
