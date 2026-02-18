@@ -216,15 +216,6 @@ jobs:
                   );
                   ALTER TABLE github_stargazers ADD COLUMN IF NOT EXISTS starred_at TIMESTAMPTZ;
                   ALTER TABLE github_stargazers ADD COLUMN IF NOT EXISTS unstarred_at TIMESTAMPTZ;
-                  
-                  CREATE TABLE IF NOT EXISTS github_stargazers_daily (
-                      repo_name TEXT,
-                      date DATE,
-                      new_count INT,
-                      unstar_count INT,
-                      reactivated_count INT,
-                      PRIMARY KEY (repo_name, date)
-                  );
               """)
 
               # Get previous active state
@@ -276,24 +267,11 @@ jobs:
                       WHERE repo_name = %s AND user_login = %s AND unstarred_at IS NULL;
                   """, (now, REPO, login))
 
-              # Save daily aggregation
-              today = date.today()
-              cur.execute("""
-                  INSERT INTO github_stargazers_daily
-                  (repo_name, date, new_count, unstar_count, reactivated_count)
-                  VALUES (%s, %s, %s, %s, %s)
-                  ON CONFLICT (repo_name, date) DO UPDATE SET
-                      new_count = EXCLUDED.new_count,
-                      unstar_count = EXCLUDED.unstar_count,
-                      reactivated_count = EXCLUDED.reactivated_count;
-              """, (REPO, today, len(new_users), len(lost_users), reactivate_count))
-          
               conn.commit()
               cur.close()
               conn.close()
           
               print(f"Stargazers update complete. New: {len(new_users)}, Unstarred: {len(lost_users)}, Reactivated: {reactivate_count}. Total fetched: {len(current)}.")
-              print(f"Daily aggregation saved: date={today}, new={len(new_users)}, unstar={len(lost_users)}, reactivated={reactivate_count}")
 
               if new_users:
                   print("New stargazers since last run:")
