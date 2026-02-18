@@ -26,11 +26,4 @@
     <Folder Include="Connections" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="IvyNugetStats.Api/**" />
-    <Content Remove="IvyNugetStats.Api/**" />
-    <EmbeddedResource Remove="IvyNugetStats.Api/**" />
-    <None Remove="IvyNugetStats.Api/**" />
-  </ItemGroup>
-
 </Project>
