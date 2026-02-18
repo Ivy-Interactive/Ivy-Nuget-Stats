@@ -1,6 +1,19 @@
 @IvyNugetStats.Api_HostAddress = http://localhost:5032
 
-GET {{IvyNugetStats.Api_HostAddress}}/weatherforecast/
+### Get active stargazers (users who currently star the repo)
+GET {{IvyNugetStats.Api_HostAddress}}/starred
+Accept: application/json
+
+###
+
+### Get removed stargazers (users who unstarred the repo)
+GET {{IvyNugetStats.Api_HostAddress}}/unstarred
+Accept: application/json
+
+###
+
+### Get star counts summary
+GET {{IvyNugetStats.Api_HostAddress}}/stars/count
 Accept: application/json
 
 ###
