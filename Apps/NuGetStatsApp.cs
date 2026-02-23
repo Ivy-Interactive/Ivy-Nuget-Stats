@@ -864,7 +864,7 @@ public class IvyInsightsApp : ViewBase
             .Icon(Icons.FileCode)
             .Variant(ButtonVariant.Outline)
             .Large()
-            .HandleClick(_ => navigator.Navigate("/scalar"));
+            .Url("/scalar");
 
         return Layout.Vertical().Align(Align.TopCenter)
             | metrics.Width(Size.Fraction(0.9f))
