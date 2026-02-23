@@ -2,10 +2,31 @@ using IvyInsights.Apps;
 using IvyInsights.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.OpenApi;
+using Scalar.AspNetCore;
 
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 
 var server = new Server();
+var ivyInsightsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "/starred", "/unstarred", "/stars", "/downloads", "/downloads/history", "/summary"
+};
+var allowedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IvyInsights" };
+server.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        foreach (var path in document.Paths.Keys.Where(p => !ivyInsightsPaths.Contains(p)).ToList())
+            document.Paths.Remove(path);
+        if (document.Tags != null)
+        {
+            foreach (var tag in document.Tags.Where(t => t.Name != null && !allowedTags.Contains(t.Name)).ToList())
+                document.Tags.Remove(tag);
+        }
+        return Task.CompletedTask;
+    });
+});
 
 server.Services.AddHttpClient<NuGetApiClient>(client =>
 {
@@ -36,10 +57,13 @@ server.UseHotReload();
 
 server.AddAppsFromAssembly();
 server.AddConnectionsFromAssembly();
-server.ReservePaths("/starred", "/unstarred", "/stars", "/downloads", "/summary");
+server.ReservePaths("/starred", "/unstarred", "/stars", "/downloads", "/summary", "/openapi", "/scalar");
 
 server.UseWebApplication(app =>
 {
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+
     app.MapGet("/starred", async (IDatabaseService db, CancellationToken ct) =>
     {
         var all = await db.GetGithubStargazersAsync(ct);
