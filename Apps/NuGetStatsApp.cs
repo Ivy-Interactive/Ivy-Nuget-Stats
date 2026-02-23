@@ -860,6 +860,12 @@ public class IvyInsightsApp : ViewBase
             ).Width(Size.Rem(28));
         }
 
+        var openApiButton = new Button("OpenAPI spec")
+            .Icon(Icons.FileCode)
+            .Variant(ButtonVariant.Outline)
+            .Large()
+            .HandleClick(_ => navigator.Navigate("/scalar"));
+
         return Layout.Vertical().Align(Align.TopCenter)
             | metrics.Width(Size.Fraction(0.9f))
             | (Layout.Grid().Columns(3).Width(Size.Fraction(0.9f))
@@ -869,10 +875,11 @@ public class IvyInsightsApp : ViewBase
             | (Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | versionChartCard
                 | totalDownloadsCard)
+            | versionsTableCard
+            | new FloatingPanel(openApiButton, Align.BottomRight).Offset(new Thickness(0, 0, 10, 5))
             | ( Layout.Horizontal().Width(Size.Fraction(0.9f)).Height(Size.Units(140))
                 | githubStarsCard
                 | stargazersDailyCard )
-            | versionsTableCard
             | stargazersTodayDialog
             | stargazerDetailDialog;
     }
