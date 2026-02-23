@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,6 +8,7 @@
     <NoWarn>CS8618;CS8603;CS8602;CS8604;CS9113</NoWarn>
     <RootNamespace>IvyInsights</RootNamespace>
     <UserSecretsId>e8bb724a-3b0b-42dd-8b9d-01725b8695cf</UserSecretsId>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.OpenApi.Generated</InterceptorsNamespaces>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,10 +16,11 @@
   </ItemGroup>
 
   
-    <ItemGroup>
-      <PackageReference Include="Ivy" Version="1.2.14-pre-20260213104724" />
-      <PackageReference Include="Npgsql" Version="9.0.2" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Ivy" Version="1.2.15" />
+    <PackageReference Include="Npgsql" Version="9.0.2" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.12.40" />
+  </ItemGroup>
     
 
   <ItemGroup>
